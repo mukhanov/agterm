@@ -17,6 +17,40 @@ public enum ControlEventKind
     [JsonStringEnumMemberName("remote.closed")] RemoteClosed,
 }
 
+public static class ControlEventKindExtensions
+{
+    public static string WireName(this ControlEventKind kind) => kind switch
+    {
+        ControlEventKind.Status => "status",
+        ControlEventKind.Notify => "notify",
+        ControlEventKind.SessionCreated => "session.created",
+        ControlEventKind.SessionClosed => "session.closed",
+        ControlEventKind.TreeChanged => "tree.changed",
+        ControlEventKind.PaneSplit => "pane.split",
+        ControlEventKind.PaneScratch => "pane.scratch",
+        ControlEventKind.RemoteOpened => "remote.opened",
+        ControlEventKind.RemoteClosed => "remote.closed",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    public static bool FromWireName(string wire, out ControlEventKind kind)
+    {
+        switch (wire)
+        {
+            case "status": kind = ControlEventKind.Status; return true;
+            case "notify": kind = ControlEventKind.Notify; return true;
+            case "session.created": kind = ControlEventKind.SessionCreated; return true;
+            case "session.closed": kind = ControlEventKind.SessionClosed; return true;
+            case "tree.changed": kind = ControlEventKind.TreeChanged; return true;
+            case "pane.split": kind = ControlEventKind.PaneSplit; return true;
+            case "pane.scratch": kind = ControlEventKind.PaneScratch; return true;
+            case "remote.opened": kind = ControlEventKind.RemoteOpened; return true;
+            case "remote.closed": kind = ControlEventKind.RemoteClosed; return true;
+            default: kind = default; return false;
+        }
+    }
+}
+
 /// <summary>Kind-specific event data. Optional fields keep the encoded payload compact while preserving one
 /// stable object shape for shell/JSON consumers.</summary>
 public sealed class ControlEventPayload
