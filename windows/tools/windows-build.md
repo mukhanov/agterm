@@ -10,11 +10,11 @@ stay green on both sides.
    `https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.401/dotnet-sdk-10.0.401-win-x64.zip`, extract to
    `C:\Users\<you>\dotnet`, and export `DOTNET_ROOT` per shell (apphosts resolve the runtime through it,
    not PATH). Verify: `%DOTNET_ROOT%\dotnet.exe --version` → `10.0.x`.
-2. **Swift 6 toolchain for Windows** —
-   `https://download.swift.org/swift-6.4.0-release/windows10/swift-6.4.0-RELEASE/swift-6.4.0-RELEASE-windows10.exe`
-   (InstallShield wrapper, ~2 GB). `/S` exits silently without elevation — run it interactively and
-   approve the UAC prompt; it installs to `C:\Library\Swift-development`. Linking needs MSVC + Windows
-   SDK, which the machine already has (VS Build Tools 18/2022, SDK 10.0.26100). Verify: `swift --version`.
+2. **Swift 6 toolchain for Windows** — INSTALLED (2026-10-03): Swift 6.4.0 managed layout at
+   `C:\Users\nikol\AppData\Local\Programs\Swift\` (Toolchains/Platforms/Runtimes). The installer writes
+   `SDKROOT` and both `Path` entries into `HKCU\Environment` — new shells only; an older shell needs
+   `source C:\Users\nikol\agterm-win-env.sh` (PATH, SDKROOT, runtime DLLs, `core.symlinks=false` for
+   dependency checkouts). Self-contained layout: no MSVC/Windows SDK requirement.
 3. **Git** — any recent build; `git clone` your fork, `git checkout windows-port`.
 
 ## Build
@@ -27,7 +27,8 @@ dotnet build
 # Swift CLI — agtermctl.exe from the same source the macOS app ships
 cd ..\agtermCore
 swift build -c release --product agtermctl
-# binary at .build\release\agtermctl.exe — copy somewhere on PATH or use the full path
+# binary at .build\out\Products\Release-windows-x86_64gtermctl.exe — the .buildelease
+# symlink needs Developer Mode and stays a warning
 ```
 
 ## Verify — headless milestone (no UI)
