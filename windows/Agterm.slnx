@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Agterm.Core/Agterm.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Agterm.Core.Tests/Agterm.Core.Tests.csproj" />
+  </Folder>
+</Solution>

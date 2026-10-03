@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Host-free model + wire codec, mirroring the Swift `agtermCore` contract.
+       No UI, no sockets, no Windows-only dependencies: builds and tests on macOS. -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Agterm.Core.Tests" />
+  </ItemGroup>
+
+</Project>

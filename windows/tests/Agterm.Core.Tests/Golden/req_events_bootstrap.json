@@ -1,0 +1,1 @@
+{"cmd":"events.read","args":{"limit":50,"kinds":["status","tree.changed"]}}

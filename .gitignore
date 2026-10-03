@@ -20,8 +20,15 @@ agterm.xcodeproj/
 settings.json
 windows.json
 workspaces.json
-windows/
 *.sock
+
+# windows/ holds the Windows port source (windows-port branch); stray per-window state dirs that a
+# pointed-at-the-repo run drops next to windows.json land at the repo root and stay ignored by the
+# *.json / *.sock rules above
+!windows/
+windows/**/bin/
+windows/**/obj/
+windows/tools/golden/.build/
 
 # python tooling leftovers from the cookbook recipes: bytecode cache and the ruff lint cache
 __pycache__/
