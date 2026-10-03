@@ -159,7 +159,7 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
             SampleDescription = new SampleDescription(1, 0),
             BufferUsage = Usage.RenderTargetOutput,
             BufferCount = 2,
-            Scaling = Scaling.None,
+            Scaling = Scaling.Stretch, // composition swapchains only support stretch scaling
             SwapEffect = SwapEffect.FlipSequential,
             AlphaMode = AlphaMode.Ignore,
         };
