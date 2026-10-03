@@ -8,5 +8,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Agterm.Core.Tests/Agterm.Core.Tests.csproj" />
+    <Project Path="tests/Agterm.E2E.Tests/Agterm.E2E.Tests.csproj" />
   </Folder>
 </Solution>

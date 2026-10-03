@@ -1,0 +1,20 @@
+name: windows
+
+on:
+  push:
+    branches: [windows-port]
+  pull_request:
+    branches: [windows-port]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build
+        run: dotnet build windows/Agterm.slnx
+      - name: Test (protocol/model suite; E2E needs the swift-built CLI and runs on the dev machine)
+        run: dotnet test windows/tests/Agterm.Core.Tests

@@ -110,8 +110,16 @@ TERM_PROGRAM=agterm.
    сайдбаре, оконные команды (NullWindowHost).
 4. **Рендер**: SwapChainPanel + D3D11/Direct2D/DirectWrite (Vortice.Windows), глиф-атлас, сетка ячеек,
    font size из TerminalEmulator.CurrentFontSize.
-5. **Потом**: persistence-проверка restore-Layout, статусы в UI, темы, E2E-сьют, CI windows-latest,
-   `dotnet publish` self-contained.
+5. ✅ **Фаза 5 + обвязка (2026-10-03)**: Direct2D-рендер (`TerminalRenderer`: D3D11→composition
+   SwapChainPanel, атрибуты `(flags<<18)|(fg<<9)|bg`, палитра 256 из вендора, инверсия/подчёркивание/
+   зачёркивание/невидимые, каретка-блок, колёсико = YDisp-скроллбэк, ресайз окна → ресайз pty в ячейках),
+   темы (`theme.set/list` с паритетными ошибками, `UiTheme` в Core, `ControlArgs.theme`), сайдбар:
+   статус-точки, rename двойным кликом (сессия/workspace), контекстное закрытие; drag-разделитель сплита
+   с живым ratio (доли 1-ratio/ratio). E2E-сьют `tests/Agterm.E2E.Tests` (запускает реальный exe +
+   agtermctl.exe на изолированном сокете; CLI-грамматика, `--json`; Swift-DLL пути пробрасываются в PATH),
+   CI `.github/workflows/windows-ci.yml` (build slnx + Core.Tests), `windows/tools/publish.ps1`
+   (self-contained publish + zip). Остатки: системная тема следом за Windows, selection мышью,
+   оконные команды, глиф-атлас как оптимизация.
 
 ## Быстрые команды (Windows, PowerShell)
 

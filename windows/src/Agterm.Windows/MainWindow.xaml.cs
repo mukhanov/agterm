@@ -1,3 +1,4 @@
+using IoPath = System.IO.Path;
 using Windows.System;
 using Agterm.Core;
 using Agterm.Core.Control;
@@ -6,16 +7,19 @@ using Agterm.Core.Protocol;
 using Agterm.Terminal;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.UI;
 
 namespace Agterm.Windows;
 
 // The macOS-shaped single window: a sidebar over the window library, a deck of mounted pane hosts, and
-// the control socket served on the UI thread. Terminal drawing is plain monospace text for now; the
-// Direct2D renderer replaces PaneHost's visuals without touching this wiring.
+// the control socket served on the UI thread.
 public sealed partial class MainWindow : Window
 {
+    private const string StateDirOverrideKey = nameof(StateDirOverrideKey); // reserved, unused today
+
     private readonly string _socketPath = SocketPathResolver.Resolve(null);
     private readonly SnapshotStore _persistence;
     private readonly WindowLibraryModel _library;
@@ -30,7 +34,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         _queue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        var stateDir = Path.GetDirectoryName(_socketPath)!;
+        var stateDir = IoPath.GetDirectoryName(_socketPath)!;
         Directory.CreateDirectory(stateDir);
         _persistence = new SnapshotStore(stateDir);
         _profile = ShellProfiles.Default();
@@ -85,6 +89,10 @@ public sealed partial class MainWindow : Window
         RefreshAll();
     }
 
+    internal static void UiLog(string message) =>
+        File.AppendAllText(IoPath.Combine(IoPath.GetTempPath(), "agterm-ui.log"),
+            DateTime.Now.ToString("HH:mm:ss.fff ") + message + Environment.NewLine);
+
     private ControlResponse MarshalToUi(Func<ControlResponse> work)
     {
         var tcs = new TaskCompletionSource<ControlResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -99,7 +107,7 @@ public sealed partial class MainWindow : Window
     private IPaneSurface CreateSurface(StoreModel store, SessionModel session, bool split)
     {
         if (_profile is null)
-            return new EchoSurface(session);
+            return new EchoPane(session);
 
         var paneToken = Guid.NewGuid().ToString("N")[..12];
         var env = new Dictionary<string, string>
@@ -143,33 +151,89 @@ public sealed partial class MainWindow : Window
         SidebarList.Children.Clear();
         foreach (var workspace in store.Workspaces)
         {
-            SidebarList.Children.Add(new TextBlock
+            var workspaceHeader = new TextBlock
             {
                 Text = workspace.Name.ToUpperInvariant(),
                 FontSize = 11,
                 Opacity = 0.6,
                 Margin = new Thickness(8, 10, 4, 3),
-            });
+                IsDoubleTapEnabled = true,
+            };
+            var workspaceId = workspace.Id;
+            workspaceHeader.DoubleTapped += (_, _) => BeginRename(
+                workspaceHeader, workspace.Name, name => store.RenameWorkspace(workspaceId, name));
+            SidebarList.Children.Add(workspaceHeader);
             foreach (var session in workspace.Sessions)
             {
                 var id = session.Id;
+                var rowContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+                var statusDot = StatusDot(session);
+                if (statusDot is not null) rowContent.Children.Add(statusDot);
+                rowContent.Children.Add(new TextBlock { Text = session.DisplayName });
                 var row = new Button
                 {
-                    Content = session.DisplayName,
+                    Content = rowContent,
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                     HorizontalContentAlignment = HorizontalAlignment.Left,
                     Padding = new Thickness(10, 4, 8, 4),
                     CornerRadius = new CornerRadius(4),
                     Background = id == selected ? new SolidColorBrush(Color.FromArgb(40, 88, 140, 255)) : null,
+                    IsDoubleTapEnabled = true,
                 };
+                var closeItem = new MenuFlyoutItem { Text = "Close session" };
+                closeItem.Click += (_, _) => CloseSession(id);
+                row.ContextFlyout = new MenuFlyout { Items = { closeItem } };
                 row.Click += (_, _) =>
                 {
                     store.SelectSession(id);
                     RefreshAll();
                 };
+                row.DoubleTapped += (_, _) => BeginRename(
+                    row, session.CustomName ?? session.DisplayName,
+                    name => store.RenameSession(id, string.IsNullOrWhiteSpace(name) ? null : name));
                 SidebarList.Children.Add(row);
             }
         }
+    }
+
+    private static Ellipse? StatusDot(SessionModel session)
+    {
+        var color = session.Indicator.Status switch
+        {
+            StatusKind.Active => Color.FromArgb(255, 52, 199, 89),
+            StatusKind.Completed => Color.FromArgb(255, 48, 176, 199),
+            StatusKind.Blocked => Color.FromArgb(255, 255, 69, 58),
+            _ => (Color?)null,
+        };
+        if (color is null) return null;
+        return new Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(color.Value), VerticalAlignment = VerticalAlignment.Center };
+    }
+
+    /// <summary>Swaps a sidebar element's content for an inline rename box; Enter commits, Esc cancels.</summary>
+    private void BeginRename(FrameworkElement host, string current, Action<string> commit)
+    {
+        var box = new TextBox { Text = current, Margin = host.Margin, FontSize = 12 };
+        var parent = host.Parent as Panel;
+        if (parent is null) return;
+        var index = parent.Children.IndexOf(host);
+        parent.Children.RemoveAt(index);
+        parent.Children.Insert(index, box);
+        box.Focus(FocusState.Programmatic);
+        box.SelectAll();
+        var done = false;
+        void Finish(bool save)
+        {
+            if (done) return;
+            done = true;
+            if (save) commit(box.Text);
+            RefreshAll();
+        }
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == VirtualKey.Enter) Finish(true);
+            else if (e.Key == VirtualKey.Escape) Finish(false);
+        };
+        box.LostFocus += (_, _) => Finish(false);
     }
 
     private void RefreshDeck()
@@ -185,27 +249,23 @@ public sealed partial class MainWindow : Window
         DeckHost.Child = session is not null && _paneAreas.TryGetValue(session.Id, out var area) ? area : null;
     }
 
-    internal static void UiLog(string message) =>
-        File.AppendAllText(Path.Combine(Path.GetTempPath(), "agterm-ui.log"),
-            DateTime.Now.ToString("HH:mm:ss.fff ") + message + Environment.NewLine);
-
     private void MountPane(SessionModel session, bool forceSplitMount = false)
     {
         try
         {
-        if (_paneAreas.TryGetValue(session.Id, out var existing))
-        {
-            RebuildSplit(session, existing);
+            if (_paneAreas.TryGetValue(session.Id, out var existing))
+            {
+                RebuildSplit(session, existing);
+                RefreshDeck();
+                return;
+            }
+            var area = new Grid();
+            var primary = new PaneHost(session, split: false);
+            Grid.SetColumn(primary, 0);
+            area.Children.Add(primary);
+            _paneAreas[session.Id] = area;
+            RebuildSplit(session, area);
             RefreshDeck();
-            return;
-        }
-        var area = new Grid();
-        var primary = new PaneHost(session, split: false);
-        Grid.SetColumn(primary, 0);
-        area.Children.Add(primary);
-        _paneAreas[session.Id] = area;
-        RebuildSplit(session, area);
-        RefreshDeck();
         }
         catch (Exception e)
         {
@@ -217,24 +277,52 @@ public sealed partial class MainWindow : Window
     {
         var wantsSplit = session.SplitSurface is not null && session.SplitShown;
         var oldSplit = area.Children.OfType<PaneHost>().FirstOrDefault(h => h.RepresentsSplit);
+        var oldDivider = area.Children.OfType<Rectangle>().FirstOrDefault();
         if (!wantsSplit)
         {
-            if (oldSplit is not null)
-            {
-                area.Children.Remove(oldSplit);
-                area.ColumnDefinitions.Clear();
-                area.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            }
+            if (oldSplit is not null) area.Children.Remove(oldSplit);
+            if (oldDivider is not null) area.Children.Remove(oldDivider);
+            area.ColumnDefinitions.Clear();
+            area.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             return;
         }
-        if (oldSplit is not null) return;
-        if (area.ColumnDefinitions.Count == 0)
-            area.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        if (oldSplit is not null && oldDivider is not null) return;
+
+        area.Children.Remove(oldSplit);
+        area.Children.Remove(oldDivider);
+        area.ColumnDefinitions.Clear();
         var ratio = Math.Clamp(session.SplitRatio, StoreModel.SplitRatioMin, StoreModel.SplitRatioMax);
+        area.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - ratio, GridUnitType.Star) });
+        area.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
         area.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ratio, GridUnitType.Star) });
+
         var host = new PaneHost(session, split: true);
-        Grid.SetColumn(host, 1);
+        Grid.SetColumn(host, 2);
         area.Children.Add(host);
+
+        var divider = new Rectangle
+        {
+            Width = 6,
+            Fill = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128)),
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+        Grid.SetColumn(divider, 1);
+        divider.PointerPressed += (_, e) =>
+        {
+            divider.CapturePointer(e.Pointer);
+            e.Handled = true;
+        };
+        divider.PointerMoved += (_, e) =>
+        {
+            if (!e.Pointer.IsInContact || area.ActualWidth < 40) return;
+            var fraction = e.GetCurrentPoint(area).Position.X / area.ActualWidth;
+            session.SplitRatio = Math.Clamp(fraction, StoreModel.SplitRatioMin, StoreModel.SplitRatioMax);
+            area.ColumnDefinitions[0].Width = new GridLength(1 - session.SplitRatio, GridUnitType.Star);
+            area.ColumnDefinitions[2].Width = new GridLength(session.SplitRatio, GridUnitType.Star);
+            e.Handled = true;
+        };
+        divider.PointerReleased += (_, e) => divider.ReleasePointerCapture(e.Pointer);
+        area.Children.Add(divider);
     }
 
     // --- buttons and commands --------------------------------------------------------
@@ -259,18 +347,24 @@ public sealed partial class MainWindow : Window
         RefreshAll();
     }
 
+    private void CloseSession(Guid id)
+    {
+        var store = ActiveStore;
+        if (store is null) return;
+        var session = store.SessionWithId(id);
+        if (session is null) return;
+        session.Surface?.Teardown();
+        session.SplitSurface?.Teardown();
+        _paneAreas.Remove(id);
+        store.CloseSession(id);
+        RefreshAll();
+    }
+
     private void CloseActiveSession()
     {
         var store = ActiveStore;
         var id = store?.SelectedSessionId;
-        if (store is null || id is null) return;
-        var session = store.SessionWithId(id.Value);
-        if (session is null) return;
-        session.Surface?.Teardown();
-        session.SplitSurface?.Teardown();
-        _paneAreas.Remove(session.Id);
-        store.CloseSession(session.Id);
-        RefreshAll();
+        if (store is not null && id is not null) CloseSession(id.Value);
     }
 
     private void SplitActiveSession()
@@ -352,11 +446,11 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>The fallback when no shell profile was detected; mirrors the headless host's echo panes.</summary>
-    private sealed class EchoSurface : IPaneSurface
+    private sealed class EchoPane : IPaneSurface
     {
         private readonly System.Text.StringBuilder _screen = new();
 
-        public EchoSurface(SessionModel session) =>
+        public EchoPane(SessionModel session) =>
             _screen.AppendLine($"agterm windows — {session.DisplayName}");
 
         public void Teardown() { }
