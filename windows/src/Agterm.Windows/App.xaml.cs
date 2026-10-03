@@ -6,11 +6,29 @@ public partial class App : Application
 {
     public static MainWindow? Window { get; private set; }
 
-    public App() => InitializeComponent();
+    public App()
+    {
+        InitializeComponent();
+        Application.Current.UnhandledException += (_, e) =>
+        {
+            Program.UiLog("xaml unhandled: " + e.Message + Environment.NewLine + e.Exception);
+            e.Handled = true;
+        };
+        System.AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            Program.UiLog("domain unhandled: " + e.ExceptionObject);
+    }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        Window = new MainWindow();
-        Window.Activate();
+        try
+        {
+            Window = new MainWindow();
+            Window.Activate();
+        }
+        catch (Exception e)
+        {
+            Program.UiLog("OnLaunched: " + e);
+            throw;
+        }
     }
 }

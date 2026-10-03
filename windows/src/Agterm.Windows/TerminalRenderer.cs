@@ -43,9 +43,12 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
     /// <summary>The engine resizes its buffer and the pty when the cell grid changes.</summary>
     public Action<int, int>? GridResized { get; set; }
 
+    /// <summary>The pane's live font size (from the IPaneSurface, not the engine buffer).</summary>
+    public Func<double?>? FontSizeProvider { get; set; }
+
     public TerminalRenderer()
     {
-        Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black);
+        // SwapChainPanel rejects Panel.Background; the D2D clear paints the terminal background
         Loaded += (_, _) => EnsureStarted();
         SizeChanged += (_, e) =>
         {
@@ -109,7 +112,9 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         _context = _d2dDevice.CreateDeviceContext();
         _dwrite = DWrite.DWriteCreateFactory<IDWriteFactory>(Vortice.DirectWrite.FactoryType.Shared);
 
-        var dxgiFactory = dxgiDevice.GetParent<IDXGIFactory2>();
+        // the modern DXGI device's factory parent fails the IDXGIFactory2 QI on some machines;
+        // a directly created factory serves composition swapchains identically
+        using var dxgiFactory = DXGI.CreateDXGIFactory1<IDXGIFactory2>();
         var description = new SwapChainDescription1
         {
             Width = (uint)Math.Max(1, (int)ActualWidth),
@@ -153,8 +158,7 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
 
     private void SyncFontSize()
     {
-        var surface = BufferProvider?.Invoke();
-        var size = surface == null ? null : ((Agterm.Core.Model.IPaneSurface)surface).CurrentFontSize();
+        var size = FontSizeProvider?.Invoke();
         if (size is { } live && Math.Abs((float)live - _fontSize) > 0.01f)
         {
             _fontSize = (float)live;
@@ -274,8 +278,10 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
 
     private static string RunText(BufferLine line, int start, int end)
     {
+        // empty cells carry the 0x0200 placeholder rune with Code 0 — they render as spaces
         var builder = new System.Text.StringBuilder(end - start);
-        for (var i = start; i < end; i++) builder.Append(line[i].Rune.ToString());
+        for (var i = start; i < end; i++)
+            builder.Append(line[i].Code == 0 ? ' ' : line[i].Rune.ToString());
         return builder.ToString();
     }
 

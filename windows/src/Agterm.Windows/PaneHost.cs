@@ -33,6 +33,7 @@ public sealed class PaneHost : Grid
         };
 
         _renderer.BufferProvider = () => (Surface as TerminalEmulator)?.EngineBuffer;
+        _renderer.FontSizeProvider = () => Surface?.CurrentFontSize();
         _renderer.GridResized = (columns, rows) =>
         {
             if (Surface is TerminalEmulator emulator) emulator.Resize(columns, rows);
