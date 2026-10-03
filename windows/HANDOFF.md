@@ -98,9 +98,16 @@ TERM_PROGRAM=agterm.
    `hi` от реального cmd.exe. agterm-паритет доказан, Фаза 3 закрыта полностью. Расширение прогона
    (tree/split/resize) и `swift test` на Windows — по потребности; часть suite'ов в os(macOS)-блоках
    и на Windows не запустится (норма).
-3. **Фаза 4 — WinUI 3**: проект `Agterm.Windows` (unpackaged, WindowsAppSDK), окно: сайдбар TreeView ←
-   WindowLibraryModel, SessionDeck (eager deck), SplitHost с ratio 0.05–0.95, акселераторы
-   Ctrl+T/W/D/Tab/1..9/=/-/0, ControlServer на UI-потоке (делегат-маршал в ControlServer уже есть).
+3. ✅ **Фаза 4 — WinUI 3 (2026-10-03)**: `windows/src/Agterm.Windows` — unpackaged + self-contained
+   (WindowsAppSDK 2.5.1, свой .NET-рантайм), запускается двойным кликом:
+   `windows\src\Agterm.Windows\bin\Debug\net10.0-windows10.0.19041.0\win-x64\Agterm.Windows.exe`.
+   Сайдбар (workspace'ы+сессии из модели, кнопки +session/+workspace), дек панелей (PaneHost: буфер
+   XtermSharp → монопространственный TextBlock + каретка, клавиатура → pty, Ctrl+V вставка), сплит по
+   SplitRatio, акселераторы Ctrl+T/W/D/Tab/1..9, ControlServer на UI-потоке (маршал через
+   DispatcherQueue + TaskCompletionSource), quit-time снапшот, restore заспавнит панели восстановленных
+   сессий. Протокол проверен agtermctl.exe против GUI. Остатки до macOS-паритета: текстовый рендер
+   (цветов/скроллбэка колёсиком нет — это Фаза 5, Direct2D), drag-разделитель, переименование в
+   сайдбаре, оконные команды (NullWindowHost).
 4. **Рендер**: SwapChainPanel + D3D11/Direct2D/DirectWrite (Vortice.Windows), глиф-атлас, сетка ячеек,
    font size из TerminalEmulator.CurrentFontSize.
 5. **Потом**: persistence-проверка restore-Layout, статусы в UI, темы, E2E-сьют, CI windows-latest,

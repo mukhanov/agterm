@@ -1,0 +1,26 @@
+<Window
+    x:Class="Agterm.Windows.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="agterm">
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="230" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
+    <Grid Grid.Column="0" Background="{ThemeResource LayerFillColorDefaultBrush}">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="8,10,8,6">
+        <Button x:Name="NewSessionButton" Content="+ session" Click="OnNewSession" Padding="8,3" />
+        <Button x:Name="NewWorkspaceButton" Content="+ workspace" Click="OnNewWorkspace" Padding="8,3" />
+      </StackPanel>
+      <ScrollViewer Grid.Row="1" Padding="4,0,4,8">
+        <StackPanel x:Name="SidebarList" Spacing="1" />
+      </ScrollViewer>
+    </Grid>
+    <Border Grid.Column="1" x:Name="DeckHost" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" />
+  </Grid>
+</Window>

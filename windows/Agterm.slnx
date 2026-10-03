@@ -4,6 +4,7 @@
     <Project Path="src/Agterm.Core/Agterm.Core.csproj" />
     <Project Path="src/Agterm.Headless/Agterm.Headless.csproj" />
     <Project Path="src/Agterm.Terminal/Agterm.Terminal.csproj" />
+    <Project Path="src/Agterm.Windows/Agterm.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Agterm.Core.Tests/Agterm.Core.Tests.csproj" />
