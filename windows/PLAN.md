@@ -5,8 +5,13 @@
 - **Фаза 0 ✅** (`windows/` spine, codec, 119 golden-фикстур, 127 тестов). Открытие: Swift `JSONEncoder` даёт недетерминированный порядок ключей между процессами → контракт семантический, не побайтовый.
 - **Фаза 1 ✅** (диспетчер MVP-команд с pinned-ошибками, resolve, 92 теста).
 - **Фаза 2 ✅** (Agterm.Control: сокет-сервер с владением; StoreControlActions; модель; headless-хост; smoke по протоколу зелёный; 250 тестов). Ловушка: `Socket.Close()` из Stop() ждёт висящий блокирующий `Accept()` → дедлок; лечится Poll-циклом.
-- **Swift-ветки для agtermctl.exe** — выполняет сабагент (статус: завершается).
-- Далее: Фаза 3 (ConPTY+VT+рендер), 4 (WinUI chrome), 5–7.
+- **Swift-ветки ✅** (агtermCore собирается на Windows; agtermctl.exe прогнан end-to-end против headless и GUI).
+- **Фаза 3 ✅** (ConPTY + XtermSharp + `--live` headless; все проверки зелёные), **Фаза 4 ✅** (WinUI 3 chrome:
+  сайдбар/дек/сплиты/акселераторы/control на UI-потоке), **Фаза 5 ✅** (Direct2D-рендер, темы, скроллбэк,
+  ресайз pty из сетки), сайдбар-паритет (статусы/rename/контексты), drag-разделитель.
+- **Фазы 6–7 ✅** (E2E-сьют `tests/Agterm.E2E.Tests`, CI `windows-ci.yml`, `tools/publish.ps1`).
+- Отложено: selection мышью, системная тема следом за Windows, оконные команды (NullWindowHost),
+  глиф-атлас как оптимизация, keymap.conf.
 
 ## Context
 
