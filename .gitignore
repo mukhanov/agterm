@@ -44,3 +44,7 @@ __pycache__/
 !.claude/
 .claude/*
 !.claude/rules/
+
+# windows publish artifacts
+windows/dist/
+agterm-windows-*.zip
