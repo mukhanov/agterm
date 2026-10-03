@@ -49,12 +49,11 @@ enum HudMarkdown {
     /// sharing a list, since the parser does not say whether a list was tight or loose.
     static func lines(_ source: String) -> [Line] {
         let text = source.precomposedStringWithCanonicalMapping
+#if os(macOS)
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full,
                                                               failurePolicy: .returnPartiallyParsedIfPossible)
         guard let parsed = try? AttributedString(markdown: text, options: options) else {
-            return text.split(separator: "\n", omittingEmptySubsequences: false).map {
-                Line(lead: "", hang: "", runs: [Run(text: sanitized(String($0)), style: [])])
-            }
+            return plainLines(text)
         }
         var walker = Walker()
         for run in parsed.runs {
@@ -63,6 +62,17 @@ enum HudMarkdown {
                        block: run.presentationIntent?.components ?? [])
         }
         return walker.finish()
+#else
+        // corelibs Foundation has no AttributedString markdown parsing, and the HUD is a macOS surface;
+        // Windows lays the source out as plain text
+        return plainLines(text)
+#endif
+    }
+
+    private static func plainLines(_ text: String) -> [Line] {
+        text.split(separator: "\n", omittingEmptySubsequences: false).map {
+            Line(lead: "", hang: "", runs: [Run(text: sanitized(String($0)), style: [])])
+        }
     }
 
     /// rendersVisibleText reports whether `source` lays out to at least one non-space cell.
@@ -104,6 +114,7 @@ enum HudMarkdown {
         return out
     }
 
+#if os(macOS)
     fileprivate struct Segment {
         let text: String
         let inline: InlinePresentationIntent
@@ -325,6 +336,7 @@ enum HudMarkdown {
             return (lead, hang)
         }
     }
+#endif
 }
 
 extension HudMarkdown {

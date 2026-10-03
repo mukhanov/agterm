@@ -1,5 +1,6 @@
 import Foundation
 
+#if os(macOS)
 public enum QuitReason {
     private static let shutDown = fourCharacterCode("shut")
     private static let restart = fourCharacterCode("rest")
@@ -24,3 +25,4 @@ public enum QuitReason {
         return value.utf8.reduce(0) { ($0 << 8) | UInt32($1) }
     }
 }
+#endif

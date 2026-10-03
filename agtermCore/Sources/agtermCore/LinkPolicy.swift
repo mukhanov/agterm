@@ -28,11 +28,18 @@ public enum LinkPolicy {
     /// click, while `gethostname()` is a pure syscall. Computed ONCE, the default for `disposition`.
     public static let localHostNames: Set<String> = {
         var raw: Set<String> = ["localhost"]
+#if os(Windows)
+        // no gethostname without WSAStartup; COMPUTERNAME is the same host name gethostname returns
+        if let host = ProcessInfo.processInfo.environment["COMPUTERNAME"] {
+            raw.insert(host)
+        }
+#else
         var buffer = [CChar](repeating: 0, count: 256)   // gethostname() — the name GNU ls uses, no network
         if gethostname(&buffer, buffer.count) == 0 {
             let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }   // trim at NUL, then decode
             raw.insert(String(decoding: bytes, as: UTF8.self))
         }
+#endif
         return expandedHostNames(from: raw)
     }()
 
