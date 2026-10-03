@@ -83,15 +83,21 @@ TERM_PROGRAM=agterm.
 
 ## ЧТО ДЕЛАТЬ ДАЛЬШЕ (по порядку; обновлено 2026-10-03)
 
-1. **Установить Swift-тулчейн** (блокер для agtermctl.exe): запустить
-   `C:\Users\nikol\agterm-win-dl\swift-installer.exe` интерактивно, подтвердить UAC; проверить
-   `C:\Library\Swift-development\bin\swift.exe --version`. Затем первый запуск свифтовых веток:
-   `swift build -c release --product agtermctl` в `agtermCore/` — возможны ошибки в `SocketClient.swift`
-   (WinSDK-поверхность: sockaddr_un/afunix.h, ADDRESS_FAMILY, INVALID_SOCKET/SOCK_STREAM/WSAECONNREFUSED,
-   квалификация `WinSDK.send`/`WinSDK.connect`) и `MiscCommands.swift`. Чинить узкими os(Windows)-ветками.
-2. **agtermctl.exe end-to-end против headless**: version/tree/session new/type/text/close по runbook
-   (`windows/tools/windows-build.md`); сокет изолированным путём. После этого agtermctl-паритет
-   доказан и Фаза 3 закрыта полностью.
+1. ✅ **Swift-тулчейн установлен, agtermctl.exe собран и прогнан end-to-end** (2026-10-03). Swift 6.4.0,
+   новый managed-layout: `C:\Users\nikol\AppData\Local\Programs\Swift\` (Toolchains/Platforms/Runtimes);
+   инсталлятор прописал SDKROOT и оба Path в HKCU\Environment — новые шеллы получают это сами, старым
+   нужен `source C:\Users\nikol\agterm-win-env.sh`. Продукт:
+   `agtermCore\.build\out\Products\Release-windows-x86_64\agtermctl.exe` (symlink `.build\release` не
+   создаётся без Developer Mode — только warning). Checkout зависимостей требует `core.symlinks=false`
+   (проброшен GIT_CONFIG_* в env-файле). CLI: `--socket` — опция ПОДКОМАНД, text у `session type`
+   позиционный. Первый запуск потребовал платформенных гейтов: `#if canImport(Observation)` в ZmxLead
+   (на macOS Observation реэкспортирует AppKit), `#if os(macOS)` вокруг AppleEvent-QuitReason и его
+   теста, COMPUTERNAME вместо gethostname в LinkPolicy, HudMarkdown: парсер AttributedString+Walker под
+   `#if os(macOS)`, на Windows lines() кладёт plain-text (HUD-маркдаун — macOS-поверхность).
+2. ✅ **agtermctl.exe end-to-end против headless**: version (с client-путём), session new/type/text/close —
+   `hi` от реального cmd.exe. agterm-паритет доказан, Фаза 3 закрыта полностью. Расширение прогона
+   (tree/split/resize) и `swift test` на Windows — по потребности; часть suite'ов в os(macOS)-блоках
+   и на Windows не запустится (норма).
 3. **Фаза 4 — WinUI 3**: проект `Agterm.Windows` (unpackaged, WindowsAppSDK), окно: сайдбар TreeView ←
    WindowLibraryModel, SessionDeck (eager deck), SplitHost с ratio 0.05–0.95, акселераторы
    Ctrl+T/W/D/Tab/1..9/=/-/0, ControlServer на UI-потоке (делегат-маршал в ControlServer уже есть).
