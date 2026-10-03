@@ -1,4 +1,5 @@
 using Agterm.Core.Model;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using System.Numerics;
@@ -15,8 +16,10 @@ namespace Agterm.Windows;
 
 // The phase-5 terminal renderer: D3D11 swapchain composited into a SwapChainPanel, Direct2D drawing,
 // DirectWrite glyphs. Cells come straight from the XtermSharp buffer; attributes decode as
-// (flags << 18) | (fg << 9) | bg with 256 = default. A true glyph atlas is a later optimization —
-// per-row DirectWrite layouts are already far ahead of the phase-4 text block.
+// (flags << 18) | (fg << 9) | bg with 256 = default. The swapchain is sized in PHYSICAL pixels via
+// XamlRoot.RasterizationScale so text stays sharp at display scaling; the context DPI carries the
+// scale so all layout math stays in DIPs. Cell metrics are measured from the font, never estimated —
+// the caret and every glyph column hang off them. A true glyph atlas is a later optimization.
 public sealed class TerminalRenderer : SwapChainPanel, IDisposable
 {
     private ID3D11Device? _device;
@@ -32,6 +35,7 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
     private float _fontSize = 13f;
     private float _cellWidth = 8f;
     private float _cellHeight = 17f;
+    private float _scale = 1f;
     private int _columns, _rows;
     private bool _devicesReady;
     private bool _targetReady;
@@ -48,11 +52,14 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
 
     public TerminalRenderer()
     {
-        // SwapChainPanel rejects Panel.Background; the D2D clear paints the terminal background
         Loaded += (_, _) => EnsureStarted();
         SizeChanged += (_, e) =>
         {
-            if (_devicesReady) RecreateTarget((float)e.NewSize.Width, (float)e.NewSize.Height);
+            try
+            {
+                if (_devicesReady) RecreateTarget((float)e.NewSize.Width, (float)e.NewSize.Height);
+            }
+            catch (Exception ex) { MainWindow.UiLog("resize: " + ex.Message); }
         };
         PointerWheelChanged += OnWheel;
     }
@@ -60,17 +67,44 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
     /// <summary>Starts the device chain and the per-frame draw loop (CompositionTarget.Rendering).</summary>
     public void EnsureStarted()
     {
+        if (ActualWidth < 1)
+        {
+            SizeChanged += DeferredStart;
+            return;
+        }
+        StartCore();
+    }
+
+    private void DeferredStart(object sender, SizeChangedEventArgs e)
+    {
+        if (ActualWidth < 1) return;
+        SizeChanged -= DeferredStart;
+        StartCore();
+    }
+
+    private void StartCore()
+    {
         EnsureDevices();
         if (_renderLoop) return;
         _renderLoop = true;
+        var consecutiveFailures = 0;
         Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += (_, _) =>
         {
-            try { Draw(); }
+            try
+            {
+                Draw();
+                consecutiveFailures = 0;
+            }
             catch (Exception e)
             {
-                MainWindow.UiLog("render: " + e);
-                _renderLoop = false; // stop rethrowing every frame
-                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= (_, _) => Draw();
+                consecutiveFailures++;
+                if (consecutiveFailures == 1 || consecutiveFailures % 100 == 0)
+                    MainWindow.UiLog($"render (failure {consecutiveFailures}): " + e.Message);
+                if (consecutiveFailures >= 200)
+                {
+                    _renderLoop = false;
+                    MainWindow.UiLog("render loop stopped after 200 consecutive failures");
+                }
             }
         };
     }
@@ -88,7 +122,7 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         _device?.Dispose();
     }
 
-    /// <summary>Schedules a frame; cheap enough to call from a slow UI timer on every tick.</summary>
+    /// <summary>Schedules a frame.</summary>
     public void Draw()
     {
         if (!_devicesReady || !_targetReady) return;
@@ -112,19 +146,20 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         _context = _d2dDevice.CreateDeviceContext();
         _dwrite = DWrite.DWriteCreateFactory<IDWriteFactory>(Vortice.DirectWrite.FactoryType.Shared);
 
-        // the modern DXGI device's factory parent fails the IDXGIFactory2 QI on some machines;
-        // a directly created factory serves composition swapchains identically
+        // a directly created factory serves composition swapchains identically to the device's own
         using var dxgiFactory = DXGI.CreateDXGIFactory1<IDXGIFactory2>();
+        _scale = (float)(XamlRoot?.RasterizationScale ?? 1.0);
+        if (_scale < 0.1f) _scale = 1f;
         var description = new SwapChainDescription1
         {
-            Width = (uint)Math.Max(1, (int)ActualWidth),
-            Height = (uint)Math.Max(1, (int)ActualHeight),
+            Width = (uint)Math.Max(1, (int)(ActualWidth * _scale)),
+            Height = (uint)Math.Max(1, (int)(ActualHeight * _scale)),
             Format = Format.B8G8R8A8_UNorm,
             Stereo = false,
             SampleDescription = new SampleDescription(1, 0),
             BufferUsage = Usage.RenderTargetOutput,
             BufferCount = 2,
-            Scaling = Scaling.Stretch,
+            Scaling = Scaling.None,
             SwapEffect = SwapEffect.FlipSequential,
             AlphaMode = AlphaMode.Ignore,
         };
@@ -133,26 +168,44 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
 
         _format = _dwrite.CreateTextFormat("Cascadia Mono", null, FontWeight.Normal, FontStyle.Normal,
             FontStretch.Normal, _fontSize, "en-us");
+        MeasureCell();
         _devicesReady = true;
         RecreateTarget((float)ActualWidth, (float)ActualHeight);
     }
 
-    private void RecreateTarget(float width, float height)
+    /// <summary>The exact monospace advance and line height from a measured layout — estimating the
+    /// advance drifts the caret by a cell every few columns.</summary>
+    private void MeasureCell()
     {
-        if (!_devicesReady || _swapChain is null || _context is null || width < 1 || height < 1) return;
+        using var layout = _dwrite!.CreateTextLayout(new string('M', 64), _format, 4096, 256);
+        var metrics = layout.Metrics;
+        if (metrics.WidthIncludingTrailingWhitespace > 0)
+            _cellWidth = metrics.WidthIncludingTrailingWhitespace / 64f;
+        if (metrics.Height > 0) _cellHeight = metrics.Height;
+    }
+
+    private void RecreateTarget(float widthDips, float heightDips)
+    {
+        if (!_devicesReady || _swapChain is null || _context is null || widthDips < 1 || heightDips < 1) return;
         _target?.Dispose();
         _target = null;
-        _swapChain.ResizeBuffers(0, (uint)width, (uint)height, Format.B8G8R8A8_UNorm, SwapChainFlags.None);
+        _context.Target = null; // DXGI refuses ResizeBuffers while the context holds a back buffer
+        var pixelWidth = Math.Max(1, (uint)(widthDips * _scale));
+        var pixelHeight = Math.Max(1, (uint)(heightDips * _scale));
+        try { _swapChain.ResizeBuffers(0, pixelWidth, pixelHeight, Format.B8G8R8A8_UNorm, SwapChainFlags.None); }
+        catch (Exception e) { MainWindow.UiLog("ResizeBuffers failed: " + e.Message); throw; }
         using var backBuffer = _swapChain.GetBuffer<ID3D11Texture2D>(0);
         using var surface = backBuffer.QueryInterface<IDXGISurface>();
         var properties = new BitmapProperties1(
             new Vortice.DCommon.PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
-            96, 96, BitmapOptions.Target | BitmapOptions.CannotDraw);
-        _target = _context.CreateBitmapFromDxgiSurface(surface, properties);
+            96f * _scale, 96f * _scale, BitmapOptions.Target | BitmapOptions.CannotDraw);
+        try { _target = _context.CreateBitmapFromDxgiSurface(surface, properties); }
+        catch (Exception e) { MainWindow.UiLog("CreateBitmapFromDxgiSurface failed: " + e.Message); throw; }
         _context.Target = _target;
+        _context.SetDpi(96f * _scale, 96f * _scale);
         _targetReady = true;
 
-        RecomputeGrid(width, height);
+        RecomputeGrid(widthDips, heightDips);
         Draw();
     }
 
@@ -165,16 +218,15 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
             _format?.Dispose();
             _format = _dwrite!.CreateTextFormat("Cascadia Mono", null, FontWeight.Normal, FontStyle.Normal,
                 FontStretch.Normal, _fontSize, "en-us");
-            _cellWidth = _fontSize * 0.6f;
-            _cellHeight = _fontSize * 1.28f;
+            MeasureCell();
             RecomputeGrid((float)ActualWidth, (float)ActualHeight);
         }
     }
 
-    private void RecomputeGrid(float width, float height)
+    private void RecomputeGrid(float widthDips, float heightDips)
     {
-        var columns = Math.Max(2, (int)(width / _cellWidth));
-        var rows = Math.Max(2, (int)(height / _cellHeight));
+        var columns = Math.Max(2, (int)(widthDips / _cellWidth));
+        var rows = Math.Max(2, (int)(heightDips / _cellHeight));
         if (columns != _columns || rows != _rows)
         {
             _columns = columns;
@@ -201,7 +253,8 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
     {
         var context = _context!;
         var (themeBack, themeFront) = ThemeBase();
-        context.BeginDraw();
+        try { context.BeginDraw(); }
+        catch (Exception e) { MainWindow.UiLog("BeginDraw failed: " + e.Message); throw; }
         context.Clear(themeBack);
 
         var active = buffer?.Buffer;
@@ -245,9 +298,20 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
                         if (!string.IsNullOrWhiteSpace(text))
                         {
                             var brush = Brush(front);
-                            using var layout = _dwrite!.CreateTextLayout(
-                                text, _format, runLength * _cellWidth + 8, _cellHeight + 6);
+                            IDWriteTextLayout layout;
+                            try
+                            {
+                                layout = _dwrite!.CreateTextLayout(
+                                    text, _format, runLength * _cellWidth + 8, _cellHeight + 6);
+                            }
+                            catch (Exception e)
+                            {
+                                MainWindow.UiLog($"CreateTextLayout failed for '{text[..Math.Min(20, text.Length)]}': " + e.Message);
+                                column = runEnd;
+                                continue;
+                            }
                             context.DrawTextLayout(new Vector2(column * _cellWidth, row * _cellHeight), layout, brush);
+                            layout.Dispose();
                             var underline = row * _cellHeight + _cellHeight - 2;
                             if (flags.HasFlag(FLAGS.UNDERLINE))
                                 context.DrawLine(new Vector2(column * _cellWidth, underline),
@@ -272,8 +336,10 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
                     Brush(themeFront), 2f);
         }
 
-        context.EndDraw();
-        _swapChain!.Present(1, PresentFlags.None);
+        try { context.EndDraw(); }
+        catch (Exception e) { MainWindow.UiLog("EndDraw failed: " + e.Message); throw; }
+        try { _swapChain!.Present(1, PresentFlags.None); }
+        catch (Exception e) { MainWindow.UiLog("Present failed: " + e.Message); throw; }
     }
 
     private static string RunText(BufferLine line, int start, int end)

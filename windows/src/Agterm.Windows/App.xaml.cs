@@ -1,3 +1,4 @@
+using Agterm.Terminal;
 using Microsoft.UI.Xaml;
 
 namespace Agterm.Windows;
@@ -16,6 +17,7 @@ public partial class App : Application
         };
         System.AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             Program.UiLog("domain unhandled: " + e.ExceptionObject);
+        TerminalDiagnostics.Sink = m => Program.UiLog(m);
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)

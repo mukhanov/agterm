@@ -31,7 +31,15 @@ public sealed class TerminalEmulator : ITerminalDelegate, IPaneSurface, IDisposa
         _terminal = new XTerminal(this, new TerminalOptions { Cols = spawn.Cols ?? 80, Rows = spawn.Rows ?? 24 });
         _selection = new SelectionService(_terminal);
         _pty = PtySession.Start(spawn.CommandLine, spawn.WorkingDirectory, spawn.Environment,
-            spawn.Cols ?? 80, spawn.Rows ?? 24, onOutput: chunk => _terminal.Feed(chunk));
+            spawn.Cols ?? 80, spawn.Rows ?? 24, onOutput: chunk =>
+            {
+                // a parser exception on the pump thread would kill the whole process; log and resync
+                try { _terminal.Feed(chunk); }
+                catch (Exception e)
+                {
+                    TerminalDiagnostics.Write("feed: " + e.Message);
+                }
+            });
         _pty.Exited += code => Exited?.Invoke(code);
     }
 

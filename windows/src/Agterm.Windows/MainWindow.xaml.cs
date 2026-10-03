@@ -246,7 +246,15 @@ public sealed partial class MainWindow : Window
             return;
         }
         var session = store.SessionWithId(selected.Value);
-        DeckHost.Child = session is not null && _paneAreas.TryGetValue(session.Id, out var area) ? area : null;
+        if (session is not null && _paneAreas.TryGetValue(session.Id, out var area))
+        {
+            DeckHost.Child = area;
+            foreach (var host in area.Children.OfType<PaneHost>()) host.ActivateRenderer();
+        }
+        else
+        {
+            DeckHost.Child = null;
+        }
     }
 
     private void MountPane(SessionModel session, bool forceSplitMount = false)
@@ -418,7 +426,8 @@ public sealed partial class MainWindow : Window
     {
         var accelerator = new Microsoft.UI.Xaml.Input.KeyboardAccelerator
         {
-            Modifiers = VirtualKeyModifiers.Control,
+            // Ctrl+Shift like Windows Terminal: plain Ctrl combos belong to the shell
+            Modifiers = VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift,
             Key = key,
         };
         accelerator.Invoked += (_, args) => { action(); args.Handled = true; };

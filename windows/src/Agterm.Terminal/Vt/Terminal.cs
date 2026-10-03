@@ -691,7 +691,24 @@ namespace XtermSharp {
 
 		public int MatchColor (int r1, int g1, int b1)
 		{
-			throw new NotImplementedException ();
+			// truecolor SGR folds into the nearest 256-palette entry; the 9-bit attribute encoding
+			// cannot carry RGB. Luma-weighted distance keeps grays and primaries distinguishable.
+			var palette = Color.DefaultAnsiColors;
+			var best = 0;
+			var bestDistance = int.MaxValue;
+			for (var i = 0; i < palette.Count; i++)
+			{
+				var dr = palette [i].Red - r1;
+				var dg = palette [i].Green - g1;
+				var db = palette [i].Blue - b1;
+				var distance = dr * dr * 30 + dg * dg * 59 + db * db * 11;
+				if (distance < bestDistance)
+				{
+					bestDistance = distance;
+					best = i;
+				}
+			}
+			return best;
 		}
 
 		internal void EmitData (string txt)

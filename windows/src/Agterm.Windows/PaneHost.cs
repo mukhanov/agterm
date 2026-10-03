@@ -26,11 +26,7 @@ public sealed class PaneHost : Grid
         UseSystemFocusVisuals = false;
         KeyDown += OnKeyDown;
         CharacterReceived += OnPaneCharacterReceived;
-        Loaded += (_, _) =>
-        {
-            _renderer.EnsureStarted();
-            Focus(FocusState.Programmatic);
-        };
+        Loaded += (_, _) => Focus(FocusState.Programmatic);
 
         _renderer.BufferProvider = () => (Surface as TerminalEmulator)?.EngineBuffer;
         _renderer.FontSizeProvider = () => Surface?.CurrentFontSize();
@@ -43,6 +39,10 @@ public sealed class PaneHost : Grid
 
     public bool RepresentsSplit => _split;
 
+    /// <summary>Starts the device chain when the pane first becomes visible; hidden panes keep their
+    /// ConPTY alive but present nothing (the plan's occlusion parity).</summary>
+    public void ActivateRenderer() => _renderer.EnsureStarted();
+
     private IPaneSurface? Surface => _split ? _session.SplitSurface : _session.Surface;
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
@@ -50,6 +50,8 @@ public sealed class PaneHost : Grid
         var surface = Surface;
         if (surface is null) return;
         var ctrl = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down);
+        var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(CoreVirtualKeyStates.Down);
+        if (ctrl && shift) return; // chrome accelerators own Ctrl+Shift
         switch (e.Key)
         {
             case VirtualKey.Enter: surface.PressReturn(); break;
