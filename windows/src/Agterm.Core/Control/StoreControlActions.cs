@@ -868,8 +868,28 @@ public sealed class StoreControlActions(
         catch (Exception exception) { return Fail(exception); }
     }
 
-    public ControlResponse SetTheme(ControlArgs? args) =>
-        ControlResponse.Fail("control dispatcher did not handle theme.set");
+    public ControlResponse SetTheme(ControlArgs? args)
+    {
+        var theme = args?.Theme;
+        var light = args?.Light;
+        if (theme is not null && light is not null)
+            return ControlResponse.Fail("theme.set takes either a name or --light, not both");
+        if (theme is not null)
+        {
+            if (!UiTheme.Set(theme))
+                return ControlResponse.Fail($"unknown theme: {theme}");
+            return ControlResponse.OkWith(new ControlResult { Theme = UiTheme.Current });
+        }
+        if (light is not null)
+        {
+            // the Windows MVP has one live palette, so a light-slot set names the theme outright
+            if (!UiTheme.Set(light))
+                return ControlResponse.Fail($"unknown theme: {light}");
+            return ControlResponse.OkWith(new ControlResult { Theme = UiTheme.Current });
+        }
+        UiTheme.Set("agterm-dark"); // a bare set resets to the default, like the macOS built-in reset
+        return ControlResponse.OkWith(new ControlResult { Theme = UiTheme.Current });
+    }
 
     public ControlResponse ListThemes() =>
         ControlResponse.OkWith(new ControlResult

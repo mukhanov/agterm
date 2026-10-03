@@ -150,6 +150,7 @@ public sealed class ControlArgs
     [JsonPropertyName("sound")] public string? Sound { get; set; }
 
     [JsonPropertyName("light")] public string? Light { get; set; }
+    [JsonPropertyName("theme")] public string? Theme { get; set; }
 
     [JsonPropertyName("dark")] public string? Dark { get; set; }
 

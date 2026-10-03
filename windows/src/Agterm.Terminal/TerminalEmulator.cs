@@ -21,6 +21,9 @@ public sealed class TerminalEmulator : ITerminalDelegate, IPaneSurface, IDisposa
     private readonly SelectionService _selection;
     private double _fontSize;
 
+    /// <summary>The live engine buffer for the UI renderer (phase 5); the model never reads it.</summary>
+    public XTerminal EngineBuffer => _terminal;
+
     public TerminalEmulator(TerminalSpawn spawn)
     {
         PaneToken = spawn.PaneToken ?? Guid.NewGuid().ToString("N")[..12];

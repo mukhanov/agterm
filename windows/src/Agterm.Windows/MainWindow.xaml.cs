@@ -56,9 +56,20 @@ public sealed partial class MainWindow : Window
         }
 
         _actions = new StoreControlActions(library, _ring, NullWindowHost.Instance,
-            (session, split) => library.StoreForSession(session.Id) is { } owner
-                ? CreateSurface(owner, session, split)
-                : null);
+            (session, split) =>
+            {
+                try
+                {
+                    return library.StoreForSession(session.Id) is { } owner
+                        ? CreateSurface(owner, session, split)
+                        : null;
+                }
+                catch (Exception e)
+                {
+                    UiLog("surface factory: " + e);
+                    throw;
+                }
+            });
         _actions.App = new AppIdentity("0.1.0-windows", "windows-port");
 
         _server = new ControlServer(_socketPath, new ControlDispatcher(_actions), MarshalToUi);
@@ -174,8 +185,14 @@ public sealed partial class MainWindow : Window
         DeckHost.Child = session is not null && _paneAreas.TryGetValue(session.Id, out var area) ? area : null;
     }
 
+    internal static void UiLog(string message) =>
+        File.AppendAllText(Path.Combine(Path.GetTempPath(), "agterm-ui.log"),
+            DateTime.Now.ToString("HH:mm:ss.fff ") + message + Environment.NewLine);
+
     private void MountPane(SessionModel session, bool forceSplitMount = false)
     {
+        try
+        {
         if (_paneAreas.TryGetValue(session.Id, out var existing))
         {
             RebuildSplit(session, existing);
@@ -189,6 +206,11 @@ public sealed partial class MainWindow : Window
         _paneAreas[session.Id] = area;
         RebuildSplit(session, area);
         RefreshDeck();
+        }
+        catch (Exception e)
+        {
+            UiLog("MountPane: " + e);
+        }
     }
 
     private void RebuildSplit(SessionModel session, Grid area)
