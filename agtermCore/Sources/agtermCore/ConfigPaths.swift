@@ -200,8 +200,15 @@ public enum ConfigPaths {
     public static func editorCommand(forPath path: String) -> String {
         // POSIX single-quote: wrap in '…' and escape any embedded ' as '\'' (works in fish + POSIX shells).
         func singleQuoted(_ s: String) -> String { "'\(s.replacingOccurrences(of: "'", with: "'\\''"))'" }
+        #if os(Windows)
+        // no login-shell rc to source an exported $EDITOR from, so resolve it here and fall back to notepad
+        let editor = ProcessInfo.processInfo.environment["VISUAL"] ?? ProcessInfo.processInfo.environment["EDITOR"]
+            ?? "notepad.exe"
+        return "\(editor) \"\(path)\""
+        #else
         let inner = "${VISUAL:-${EDITOR:-vi}} \"$1\""
         let viaPosix = "exec /bin/sh -c \(singleQuoted(inner)) agterm-config-edit \(singleQuoted(path))"
         return "${SHELL:-/bin/zsh} -ilc \(singleQuoted(viaPosix))"
+        #endif
     }
 }

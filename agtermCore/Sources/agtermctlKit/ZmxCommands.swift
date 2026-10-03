@@ -15,9 +15,17 @@ struct Zmx: ParsableCommand {
         Every one needs a running agterm: only the app can join its live windows, its pending closes and \
         its persisted snapshots against what zmx reports. With agterm stopped there is nothing to ask.
         """,
-        subcommands: [List.self, Prune.self, Kill.self, Reset.self, Tree.self, Attach.self, Present.self]
+        subcommands: [List.self, Prune.self, Kill.self, Reset.self, Tree.self, Attach.self] + presentCommand
     )
 
+    /// `present` bridges stdio to the socket over `StreamBridge`, which is POSIX-only.
+    #if os(Windows)
+    private static var presentCommand: [any ParsableCommand.Type] { [] }
+    #else
+    private static var presentCommand: [any ParsableCommand.Type] { [Present.self] }
+    #endif
+
+    #if !os(Windows)
     struct Present: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Carry a presentation stream for one session between stdin/stdout and this app.",
@@ -43,6 +51,7 @@ struct Zmx: ParsableCommand {
             bridge.pump()
         }
     }
+    #endif
 
     struct Reset: RequestCommand {
         static let configuration = CommandConfiguration(

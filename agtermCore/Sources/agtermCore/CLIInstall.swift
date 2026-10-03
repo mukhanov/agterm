@@ -6,8 +6,13 @@ public enum CLIInstall {
     public static let toolName = "agtermctl"
 
     /// The PATH directory the tool is installed into. `/usr/local/bin` is the first entry in macOS's
-    /// default `/etc/paths`, so it's on every user's PATH out of the box (unlike `~/.local/bin`).
+    /// default `/etc/paths`, so it's on every user's PATH out of the box (unlike `~/.local/bin`); on
+    /// Windows the per-user `WindowsApps` dir, which is on PATH and needs no elevation.
+    #if os(Windows)
+    public static let installDirectory = "%LOCALAPPDATA%\\Microsoft\\WindowsApps"
+    #else
     public static let installDirectory = "/usr/local/bin"
+    #endif
 
     /// The full symlink path an install creates.
     public static var installPath: String { installDirectory + "/" + toolName }

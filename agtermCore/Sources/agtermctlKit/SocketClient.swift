@@ -2,10 +2,30 @@
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif canImport(WinSDK)
+import WinSDK
 #endif
 import ArgumentParser
 import Foundation
 import agtermCore
+
+#if os(Windows)
+// WinSock: sockets are SOCKET handles (not small integer descriptors), sockaddr lengths are plain
+// Int32, and failures report through WSAGetLastError() rather than errno.
+typealias SocketFD = SOCKET
+typealias SockLen = Int32
+
+// one WSAStartup per process, run exactly once by whichever thread connects first
+private enum WinSock {
+    static let started: Void = {
+        var data = WSADATA()
+        _ = WSAStartup(WORD(0x0202), &data)
+    }()
+}
+#else
+typealias SocketFD = Int32
+typealias SockLen = socklen_t
+#endif
 
 /// A failure talking to the control socket (connect/write/read/decode), distinct from a server-side
 /// `{"ok":false}` response (which is a valid decoded `ControlResponse`).
@@ -49,7 +69,11 @@ struct SocketClient {
         data.append(UInt8(ascii: "\n"))
 
         let fd = try connect()
+        #if os(Windows)
+        defer { closesocket(fd) }
+        #else
         defer { close(fd) }
+        #endif
 
         try Self.writeAll(fd, data)
 
@@ -64,7 +88,7 @@ struct SocketClient {
     }
 
     /// Open and connect a `AF_UNIX` stream socket to `path`. The caller owns the descriptor.
-    func connect() throws -> Int32 {
+    func connect() throws -> SocketFD {
         var addr = sockaddr_un()
         let pathCapacity = MemoryLayout.size(ofValue: addr.sun_path)
         guard path.utf8.count < pathCapacity else {
@@ -72,10 +96,19 @@ struct SocketClient {
         }
         #if canImport(Darwin)
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        #elseif canImport(WinSDK)
+        _ = WinSock.started
+        let fd = socket(AF_UNIX, Int32(SOCK_STREAM), 0)
         #else
         let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
         #endif
+        #if os(Windows)
+        guard fd != INVALID_SOCKET else {
+            throw SocketClientError("socket() failed: winsock error \(WSAGetLastError())")
+        }
+        #else
         guard fd >= 0 else { throw SocketClientError("socket() failed: \(String(cString: strerror(errno)))") }
+        #endif
 
         // a write after the server closes the connection (e.g. it rejected an oversized request) would
         // raise the default-fatal SIGPIPE and kill the process with no output; SO_NOSIGPIPE turns it into
@@ -86,7 +119,11 @@ struct SocketClient {
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
         #endif
 
+        #if os(Windows)
+        addr.sun_family = ADDRESS_FAMILY(AF_UNIX)
+        #else
         addr.sun_family = sa_family_t(AF_UNIX)
+        #endif
         let pathBytes = path.utf8CString
         withUnsafeMutablePointer(to: &addr.sun_path) { dst in
             dst.withMemoryRebound(to: CChar.self, capacity: pathBytes.count) { buf in
@@ -98,15 +135,21 @@ struct SocketClient {
 
         let result = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
-                systemConnect(fd, sa, socklen_t(MemoryLayout<sockaddr_un>.size))
+                systemConnect(fd, sa, SockLen(MemoryLayout<sockaddr_un>.size))
             }
         }
         guard result == 0 else {
+            #if os(Windows)
+            let failure = WSAGetLastError()
+            closesocket(fd)
+            throw SocketClientError("connect(\(path)) failed: winsock error \(failure) — \(Self.hint(forConnect: failure, path: path))")
+            #else
             // close() and the hint's own probe may overwrite errno.
             let failure = errno
             let message = String(cString: strerror(failure))
             close(fd)
             throw SocketClientError("connect(\(path)) failed: \(message) — \(Self.hint(forConnect: failure, path: path))")
+            #endif
         }
         return fd
     }
@@ -115,7 +158,12 @@ struct SocketClient {
     /// lock narrows, and only to an owner being there: `ControlServer.start` keeps the lock after a failed
     /// bind, so a held lock never says how the socket came to be unreachable.
     private static func hint(forConnect failure: Int32, path: String) -> String {
+        #if os(Windows)
+        // winsock has no ENOENT twin for a missing socket file; every other failure reads the same
+        guard failure == Int32(WSAECONNREFUSED) else { return "is agterm running?" }
+        #else
         guard failure == ECONNREFUSED || failure == ENOENT else { return "is agterm running?" }
+        #endif
         if ownershipLockHeld(socketPath: path) == true {
             return "the socket owner is present but not accepting connections"
         }
@@ -144,13 +192,20 @@ struct SocketClient {
     }
 
     /// Write all of `data` to `fd`, looping over short writes.
-    private static func writeAll(_ fd: Int32, _ data: Data) throws {
+    private static func writeAll(_ fd: SocketFD, _ data: Data) throws {
         try data.withUnsafeBytes { raw in
             var offset = 0
             let base = raw.bindMemory(to: UInt8.self).baseAddress!
             while offset < data.count {
+                #if os(Windows)
+                // qualified: SocketClient's own send(_:) shadows the winsock function name
+                let n = Int(WinSDK.send(fd, UnsafeRawPointer(base + offset).assumingMemoryBound(to: CChar.self),
+                                        Int32(data.count - offset), 0))
+                if n <= 0 { throw SocketClientError("write failed: winsock error \(WSAGetLastError())") }
+                #else
                 let n = write(fd, base + offset, data.count - offset)
                 if n <= 0 { throw SocketClientError("write failed: \(String(cString: strerror(errno)))") }
+                #endif
                 offset += n
             }
         }
@@ -159,11 +214,17 @@ struct SocketClient {
     /// Read up to (and excluding) the first newline, capping at `maxLineBytes`. Returns nil on
     /// EOF-before-newline, error, or cap exceeded. Reads in 64 KiB chunks so a multi-MB
     /// `session.text --all` response takes a handful of syscalls instead of one per byte.
-    private static func readLine(_ fd: Int32) -> Data? {
+    private static func readLine(_ fd: SocketFD) -> Data? {
         var buffer = Data()
         var chunk = [UInt8](repeating: 0, count: 64 * 1024)
         while true {
-            let n = chunk.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
+            let n = chunk.withUnsafeMutableBytes {
+                #if os(Windows)
+                Int(recv(fd, $0.baseAddress?.assumingMemoryBound(to: CChar.self), Int32($0.count), 0))
+                #else
+                read(fd, $0.baseAddress, $0.count)
+                #endif
+            }
             if n == 0 { return buffer.isEmpty ? nil : buffer }
             if n < 0 { return nil }
             if let idx = chunk[0..<n].firstIndex(of: UInt8(ascii: "\n")) {
@@ -513,9 +574,11 @@ struct SocketClient {
     }
 }
 
-private func systemConnect(_ fd: Int32, _ addr: UnsafePointer<sockaddr>, _ len: socklen_t) -> Int32 {
+private func systemConnect(_ fd: SocketFD, _ addr: UnsafePointer<sockaddr>, _ len: SockLen) -> Int32 {
     #if canImport(Darwin)
     return Darwin.connect(fd, addr, len)
+    #elseif canImport(WinSDK)
+    return WinSDK.connect(fd, addr, Int32(len))
     #else
     return Glibc.connect(fd, addr, len)
     #endif

@@ -539,8 +539,15 @@ struct Session: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Open, read, resize, or close an ephemeral overlay terminal on a session.",
             subcommands: [Open.self, Close.self, Resize.self, Reload.self, Navigate.self, Result.self, Submit.self, Copy.self,
-                          Text.self, RunJob.self]
+                          Text.self] + runJobCommand
         )
+
+        /// `run-job` supervises a program through posix_spawn + signals, which are POSIX-only.
+        #if os(Windows)
+        private static var runJobCommand: [any ParsableCommand.Type] { [] }
+        #else
+        private static var runJobCommand: [any ParsableCommand.Type] { [RunJob.self] }
+        #endif
 
         /// `--pane` validation for the overlay commands: the two pane roles only, deliberately NOT the shared
         /// `validatePaneArgument`, which also accepts `scratch` — there is no scratch pane to cover, and

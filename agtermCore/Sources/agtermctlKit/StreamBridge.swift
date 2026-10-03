@@ -1,3 +1,5 @@
+// pipe/poll/read/write are POSIX-only; the commands that bridge streams run on a POSIX origin, never Windows.
+#if !os(Windows)
 import Foundation
 import agtermCore
 
@@ -111,3 +113,4 @@ struct StreamBridge: Sendable {
         }
     }
 }
+#endif

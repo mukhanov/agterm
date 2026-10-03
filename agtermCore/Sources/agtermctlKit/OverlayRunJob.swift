@@ -1,3 +1,5 @@
+// posix_spawn + signals + poll + waitpid are POSIX-only; the run-job helper runs on a POSIX origin, never Windows.
+#if !os(Windows)
 import ArgumentParser
 import Foundation
 import agtermCore
@@ -252,3 +254,4 @@ extension Session.Overlay {
         }
     }
 }
+#endif

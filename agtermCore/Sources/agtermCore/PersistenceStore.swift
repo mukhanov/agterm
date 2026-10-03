@@ -21,10 +21,17 @@ public struct PersistenceStore {
         self.fileName = fileName
     }
 
-    /// `~/Library/Application Support/agterm`.
+    /// `~/Library/Application Support/agterm`; `%LOCALAPPDATA%\agterm` on Windows.
     public static var defaultDirectory: URL {
+        #if os(Windows)
+        // LOCALAPPDATA is Windows' per-user Application Support; HOME covers service accounts that lack it
+        let base = ProcessInfo.processInfo.environment["LOCALAPPDATA"].map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("AppData/Local")
+        return base.appendingPathComponent("agterm", isDirectory: true)
+        #else
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("agterm", isDirectory: true)
+        #endif
     }
 
     /// Loads the snapshot, recovering a default empty one on any failure (missing file, unreadable data,

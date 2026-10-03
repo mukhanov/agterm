@@ -6,7 +6,6 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "agtermCore", targets: ["agtermCore"]),
-        .library(name: "AgtermResponsibility", targets: ["AgtermResponsibility"]),
         .executable(name: "agtermctl", targets: ["agtermctl"]),
     ],
     dependencies: [
@@ -15,7 +14,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "agtermCore", dependencies: [.product(name: "TOMLDecoder", package: "TOMLDecoder")]),
-        .target(name: "AgtermResponsibility"),
         .testTarget(name: "agtermCoreTests", dependencies: ["agtermCore"]),
         .target(
             name: "agtermctlKit",
@@ -31,8 +29,13 @@ let package = Package(
 )
 
 #if os(macOS)
+// AgtermResponsibility wraps posix_spawn responsibility attrs (Darwin-only); nothing outside these
+// session-host targets needs it, and it already fails to build on Linux — gated so a Windows
+// `swift build`/`swift test` runs without it.
+package.products.append(.library(name: "AgtermResponsibility", targets: ["AgtermResponsibility"]))
 package.products.append(.executable(name: "agterm-session-host", targets: ["agterm-session-host"]))
 package.targets += [
+    .target(name: "AgtermResponsibility"),
     .target(name: "SessionHostTrampoline"),
     .target(name: "SessionHostRuntime", dependencies: ["SessionHostTrampoline", "AgtermResponsibility", "agtermCore"]),
     .executableTarget(name: "agterm-session-host", dependencies: ["SessionHostRuntime"]),

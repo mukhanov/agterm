@@ -184,7 +184,12 @@ public enum ZmxSupport {
     public static func socketDirectory(forStateDirectory stateDirectory: String) -> String {
         let canonical = URL(fileURLWithPath: stateDirectory, isDirectory: true)
             .standardizedFileURL.resolvingSymlinksInPath().path
+        #if os(Windows)
+        // %TEMP%, the Windows counterpart of /tmp
+        return FileManager.default.temporaryDirectory.path + "\\agterm-zmx-\(stableHash(canonical))"
+        #else
         return "/tmp/agterm-zmx-\(stableHash(canonical))"
+        #endif
     }
 
     public static func daemonName(for paneIdentity: UUID) -> String {

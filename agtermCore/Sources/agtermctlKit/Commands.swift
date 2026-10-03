@@ -29,12 +29,20 @@ struct BasicOptions: ParsableArguments, ConnectionOptions {
     var json = false
 
     /// Resolve the socket path, in precedence order: `--socket` → `<AGTERM_STATE_DIR>/agterm.sock` →
-    /// `<$HOME>/Library/Application Support/agterm/agterm.sock` → `/tmp/agterm/agterm.sock`. `env` is
-    /// injectable so the precedence is unit-testable; production passes the process environment.
+    /// `<$HOME>/Library/Application Support/agterm/agterm.sock` → `/tmp/agterm/agterm.sock` (Windows:
+    /// `%LOCALAPPDATA%\agterm\agterm.sock`). `env` is injectable so the precedence is unit-testable;
+    /// production passes the process environment.
     func socketPath(env: [String: String] = ProcessInfo.processInfo.environment) -> String {
         if let socket { return socket }
+        #if os(Windows)
+        // the same default PersistenceStore uses, so the CLI and the app rendezvous
+        let appSupport = env["LOCALAPPDATA"].map { ($0 as NSString).appendingPathComponent("agterm") }
+            ?? env["HOME"].map { ($0 as NSString).appendingPathComponent("AppData/Local/agterm") }
+            ?? "/tmp/agterm"
+        #else
         let appSupport = (env["HOME"].map { ($0 as NSString).appendingPathComponent("Library/Application Support/agterm") })
             ?? "/tmp/agterm"
+        #endif
         return ControlResolve.socketPath(stateDir: env["AGTERM_STATE_DIR"], appSupport: appSupport)
     }
 }
@@ -86,12 +94,19 @@ struct SurfaceTargetOptions: ParsableArguments {
 /// The root `agtermctl` command. Subcommands mirror the control catalog 1:1, except `terminfo`, which runs
 /// locally and never opens the socket.
 public struct Agtermctl: ParsableCommand {
+    /// `terminfo` is POSIX-only (ssh + infocmp + posix_spawn), so the CLI does not offer it on Windows.
+    #if os(Windows)
+    private static var platformCommands: [any ParsableCommand.Type] { [] }
+    #else
+    private static var platformCommands: [any ParsableCommand.Type] { [Terminfo.self] }
+    #endif
+
     public static let configuration = CommandConfiguration(
         commandName: "agtermctl",
         abstract: "Drive agterm over its control socket, and install its terminfo entry on other hosts.",
         subcommands: [Tree.self, Events.self, Workspace.self, Session.self, Surface.self, Dashboard.self, Window.self, Quick.self,
                       Sidebar.self, Notify.self, Font.self, Keymap.self, Hooks.self, Browser.self, Config.self, Theme.self, Pick.self, Ask.self, Restore.self,
-                      Zmx.self, Terminfo.self, Version.self]
+                      Zmx.self, Version.self] + platformCommands
     )
 
     public init() {}

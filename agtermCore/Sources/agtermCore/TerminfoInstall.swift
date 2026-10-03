@@ -1,3 +1,5 @@
+// ssh + infocmp + posix_spawn are POSIX-only; Windows has no terminfo install to offer.
+#if !os(Windows)
 import Foundation
 
 /// Installs the bundled `xterm-ghostty` terminfo entry on a remote host over one ssh connection, so
@@ -236,3 +238,4 @@ public enum TerminfoInstall {
         return strings
     }
 }
+#endif

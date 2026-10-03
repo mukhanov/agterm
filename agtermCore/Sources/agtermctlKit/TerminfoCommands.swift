@@ -1,3 +1,5 @@
+// posix_spawn + ssh + infocmp are POSIX-only; agtermctl does not advertise the terminfo command on Windows.
+#if !os(Windows)
 import ArgumentParser
 import Foundation
 import agtermCore
@@ -81,3 +83,4 @@ struct Terminfo: ParsableCommand {
         }
     }
 }
+#endif

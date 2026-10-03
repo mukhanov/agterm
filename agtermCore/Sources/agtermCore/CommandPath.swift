@@ -10,8 +10,13 @@ public enum CommandPath {
     /// widens a REMOTE shell with the same list, so the two cannot disagree about where the CLI lives.
     static let standardDirectories = [CLIInstall.installDirectory, "/opt/homebrew/bin"]
 
-    /// The PATH a launchd-started app inherits, used when the environment carries none at all.
+    /// The PATH a launchd-started app inherits, used when the environment carries none at all; the
+    /// Windows system defaults stand in for it there.
+    #if os(Windows)
+    static let launchdDefault = "%SystemRoot%\\system32;%SystemRoot%;%SystemRoot%\\System32\\Wbem;%LOCALAPPDATA%\\Programs"
+    #else
     static let launchdDefault = "/usr/bin:/bin:/usr/sbin:/sbin"
+    #endif
 
     /// `bundledCLIDirectory` goes FIRST because it is present even when nothing is installed, and its
     /// protocol matches the running app. It does NOT decide which instance the CLI drives: `--socket`, then
@@ -27,8 +32,16 @@ public enum CommandPath {
             entries.append(dir)
         }
         bundledCLIDirectory.map(add)
+        #if os(Windows)
+        base.split(separator: ";", omittingEmptySubsequences: true).forEach { add(String($0)) }
+        #else
         base.split(separator: ":", omittingEmptySubsequences: true).forEach { add(String($0)) }
+        #endif
         standardDirectories.forEach(add)
+        #if os(Windows)
+        return entries.joined(separator: ";")
+        #else
         return entries.joined(separator: ":")
+        #endif
     }
 }
