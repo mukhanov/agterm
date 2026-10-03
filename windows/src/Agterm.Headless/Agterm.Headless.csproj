@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Headless control host: serves the protocol with in-memory surfaces and no UI. The first Windows
+       milestone target — agtermctl.exe drives it end-to-end before any terminal engine exists. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Agterm.Core\Agterm.Core.csproj" />
+    <ProjectReference Include="..\Agterm.Control\Agterm.Control.csproj" />
+  </ItemGroup>
+
+</Project>

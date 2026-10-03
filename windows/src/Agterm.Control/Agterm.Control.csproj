@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- AF_UNIX listener + framing + ownership. Depends only on Agterm.Core; runs on any OS .NET supports,
+       so the socket behavior is testable on macOS during authoring. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Agterm.Core\Agterm.Core.csproj" />
+  </ItemGroup>
+
+</Project>

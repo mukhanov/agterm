@@ -145,6 +145,13 @@ public static class ControlPaneFocusModeExtensions
         "other" or "toggle" => ControlPaneFocusMode.Toggle,
         _ => null,
     };
+
+    public static bool WantsSplit(this ControlPaneFocusMode mode, bool currentSplitFocused) => mode switch
+    {
+        ControlPaneFocusMode.Primary => false,
+        ControlPaneFocusMode.Split => true,
+        _ => !currentSplitFocused,
+    };
 }
 
 public enum SessionNavigation

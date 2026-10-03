@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Agterm.Core\Agterm.Core.csproj" />
+    <ProjectReference Include="..\..\src\Agterm.Control\Agterm.Control.csproj" />
   </ItemGroup>
 
   <ItemGroup>
