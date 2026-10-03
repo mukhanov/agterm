@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Terminal engine: vendored XtermSharp (Vt/) + ConPTY pty + the IPaneSurface adapter. Renderer and
+       WinUI control land here too. Compiles on macOS (engine is UI-free); runtime ConPTY needs Windows. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- vendored netstandard-era sources: keep the repo-wide strictness from firing on them -->
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS8981;SYSLIB1096</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NStack.Core" Version="0.12.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Agterm.Core\Agterm.Core.csproj" />
+  </ItemGroup>
+
+</Project>
