@@ -27,7 +27,7 @@ dotnet build
 # Swift CLI — agtermctl.exe from the same source the macOS app ships
 cd ..\agtermCore
 swift build -c release --product agtermctl
-# binary at .build\out\Products\Release-windows-x86_64gtermctl.exe — the .buildelease
+# binary at .build\out\Products\Release-windows-x86_64\agtermctl.exe - the .build\release symlink needs Developer Mode and stays a warning
 # symlink needs Developer Mode and stays a warning
 ```
 
