@@ -48,75 +48,57 @@ windows/
 `xterm-ghostty`). Env панелей: AGTERM_ENABLED/SESSION_ID/SOCKET/WINDOW_ID/WORKSPACE_ID/PANE/PANE_ID,
 TERM_PROGRAM=agterm.
 
-## Статус по фазам
+## Статус по фазам (обновлено 2026-10-03, Windows-машина)
 
-- **Фаза 0 ✅** кодек + 119 golden-фикстур + 127 тестов. **Фаза 1 ✅** dispatcher (pinned строки ошибок).
-- **Фаза 2 ✅** сокет-сервер + StoreControlActions + модель + headless-хост; end-to-end smoke по протоколу
-  зелёный (macOS). 250 тестов.
-- **Swift-ветки ✅** 14 файлов agtermCore + Package.swift (AgtermResponsibility → os(macOS)-блок).
-  macOS: `swift build`, `swift build --product agtermctl`, `swift test` — зелёные (4008 тестов).
-- **Фаза 3 (начало)** XtermSharp вендорен и КОМПИЛИРУЕТСЯ; ConPTY-слой написан, но **НИ РАЗУ НЕ ЗАПУСКАЛСЯ**.
+- **Фазы 0–2 ✅ и ВЕРИФИЦИРОВАНЫ на Windows**: dotnet build 0 ошибок, 250/250 тестов, echo-режим
+  end-to-end (version/new/type/text/tree/close) через живой сокет.
+- **Swift-ветки ✅** на macOS (4008 тестов), но на Windows НЕ СОБИРАЛИСЬ: тулчейн не установлен.
+- **Фаза 3 ✅ и ВЕРИФИЦИРОВАНА на Windows**: `--live` headless — реальные cmd.exe через ConPTY +
+  XtermSharp; type→text round-trip, сплит, ввод в правую панель, выход сплита, промоут выжившего,
+  закрытие сессии при выходе без сплита — всё зелёное (smoke: `C:\Users\nikol\agterm-win-dl\smoke\run-smoke.sh`).
 - **Фазы 4–7** не начаты: WinUI-хром, рендер Direct2D, сплиты в UI, E2E-сьют, CI, упаковка.
 
-## ЧТО ДЕЛАТЬ ДАЛЬШЕ (по порядку)
+### Что сделано/починено в Фазе 3 (не повторяй)
 
-1. **Верификация Фаз 0–2 на Windows** (runbook: `windows/tools/windows-build.md`):
-   - `dotnet build windows/Agterm.sln` и `dotnet test` (должно быть 250/250);
-   - `swift build -c release --product agtermctl` в `agtermCore/` — ЭТО ПЕРВЫЙ РЕАЛНЫЙ ЗАПУСК СВИФОВЫХ
-     ВЕТОК; возможны ошибки компиляции в `SocketClient.swift` (WinSDK-поверхность: sockaddr_un/AF_UNIX через
-     afunix.h, ADDRESS_FAMILY, типы макросов INVALID_SOCKET/SOCK_STREAM/WSAECONNREFUSED,
-     `WinSDK.send`/`WinSDK.connect` квалификация, recv-ребинд в CChar) и `MiscCommands.swift`
-     (Bundle.main.executableURL для голого exe). Чини на месте, держи macOS-ветки нетронутыми.
-   - `dotnet run --project windows/src/Agterm.Headless` + прогони agtermctl.exe version/tree/session
-     new/type/text/close (см. runbook). Если сокет не находится — сравни `%LOCALAPPDATA%\agterm`.
-2. **Фаза 3 — живой терминал в headless-хосте**: замени EchoSurface на TerminalEmulator (PtySession +
-   XtermSharp): заводи `windows/src/Agterm.Headless/` вариант `--live`, строй TerminalSpawn из
-   ShellProfiles.Default(), проверь `session.type "echo hi\r"` → `session.text` содержит `hi`,
-   resize, выход процесса (промоут при живом сплите — см. StoreControlActions/promote), OSC 7/title
-   (PowerShell-профиль-сниппет, эмитящий OSC 7, опционален).
+1. ConPTY-attach: `UpdateProcThreadAttribute` для PSEUDOCONSOLE берёт **сам HPCON значением**, не
+   указателем на него — указатель = 0xC0000142 у ребёнка.
+2. `STARTF_USESTDHANDLES` + `INVALID_HANDLE_VALUE` на три stdio (рецепт node-pty): без этого ребёнок
+   наследует redirected stdio хоста и экранный текст НЕ идёт в пайп (только init-кадр ~119 байт).
+3. Кик `ResizePseudoConsole` сразу после CreateProcessW: без первого ресайза кадр не эмитится.
+4. Teardown: sync ReadFile не просыпается от закрытия хэндла, а ClosePseudoConsole ждёт осушения —
+   TerminateProcess → `CancelIoEx` → join помпы → закрыть хэндлы, иначе вечный дедлок.
+5. Коллизия Rune (NStack кладёт свой Rune в namespace System): `CharData.Rune.ToString()` паддовал
+   каждую ячейку пробелами. Алиас `System.Text.Rune` в CharData.cs + правки BufferLine/InputHandler/
+   SelectionService/TerminalBufferManipulation (полная квалификация `new System.Text.Rune(...)`).
+6. `PtySession.Write` DllImport требует `EntryPoint = "WriteFile"` (локальное имя WindowsWriteFile).
+7. Паритет: отсутствующий target в ResolveSession теперь подставляет "active" (как macOS), а не "".
+8. Тест `SocketPathDerivation` переведён на `Path.Combine` (POSIX-слэши на Windows не проходят).
+9. HandlePaneExit: выход сплита — teardown+очистка; выход primary при живом сплите — промоут
+   (свап cwd/title/initial, PromoteToPrimaryPane, teardown умершего); повторная доставка Exited от
+   уже снятой поверхности игнорируется (иначе закрытие всей сессии).
+10. Тулчейны машины: .NET SDK 10.0.401 user-local в `C:\Users\nikol\dotnet` (нужен DOTNET_ROOT
+    на каждый шелл); MSVC BuildTools 18/2022 + WinSDK 10.0.26100 уже стоят. Swift 6.4.0 installer
+    скачан в `C:\Users\nikol\agterm-win-dl\swift-installer.exe`, но `/S` без elevation молча
+    выходит — установка ЖДЁТ интерактивного запуска с UAC-подтверждением.
+
+## ЧТО ДЕЛАТЬ ДАЛЬШЕ (по порядку; обновлено 2026-10-03)
+
+1. **Установить Swift-тулчейн** (блокер для agtermctl.exe): запустить
+   `C:\Users\nikol\agterm-win-dl\swift-installer.exe` интерактивно, подтвердить UAC; проверить
+   `C:\Library\Swift-development\bin\swift.exe --version`. Затем первый запуск свифтовых веток:
+   `swift build -c release --product agtermctl` в `agtermCore/` — возможны ошибки в `SocketClient.swift`
+   (WinSDK-поверхность: sockaddr_un/afunix.h, ADDRESS_FAMILY, INVALID_SOCKET/SOCK_STREAM/WSAECONNREFUSED,
+   квалификация `WinSDK.send`/`WinSDK.connect`) и `MiscCommands.swift`. Чинить узкими os(Windows)-ветками.
+2. **agtermctl.exe end-to-end против headless**: version/tree/session new/type/text/close по runbook
+   (`windows/tools/windows-build.md`); сокет изолированным путём. После этого agtermctl-паритет
+   доказан и Фаза 3 закрыта полностью.
 3. **Фаза 4 — WinUI 3**: проект `Agterm.Windows` (unpackaged, WindowsAppSDK), окно: сайдбар TreeView ←
-   WindowLibraryModel, SessionDeck (eager deck: все поверхности смонтированы, переключение видимостью),
-   SplitHost с ratio 0.05–0.95, акселераторы Ctrl+T/W/D/Tab/1..9/=/-/0, ControlServer на UI-потоке
-   (маршал через DispatcherQueue — в ControlServer уже есть делегат-маршал).
+   WindowLibraryModel, SessionDeck (eager deck), SplitHost с ratio 0.05–0.95, акселераторы
+   Ctrl+T/W/D/Tab/1..9/=/-/0, ControlServer на UI-потоке (делегат-маршал в ControlServer уже есть).
 4. **Рендер**: SwapChainPanel + D3D11/Direct2D/DirectWrite (Vortice.Windows), глиф-атлас, сетка ячеек,
    font size из TerminalEmulator.CurrentFontSize.
-5. **Потом**: persistence-проверка restore-Layout, статусы в UI, темы, E2E-сьют (`tests/Agterm.E2E.Tests`
-   запускает app + agtermctl.exe), CI windows-latest, `dotnet publish` self-contained.
-
-## Грабли, на которые уже наступили (не повторяй)
-
-1. **Паритет JSON — семантический, не побайтовый.** Swift `JSONEncoder` даёт НЕдетерминированный порядок
-   ключей между процессами (проверено двумя прогонами генератора). Тесты сравнивают канонически
-   (`JsonCanonical.AssertEqual`). C# кодек при этом воспроизводит стиль Swift: `\/` экранирование,
-   даблы "300.0"/"1e+20" (см. `SwiftDoubleConverter`), null-пропуск.
-2. **Socket.Close() дедлок:** закрывать слушающий сокет при висящем блокирующем `Accept()` из другого
-   потока НЕЛЬЗЯ (Close ждёт операцию). В `ControlServer.AcceptLoop` — Poll-цикл по 500мс. Не «оптимизируй»
-   обратно в блокирующий Accept.
-3. **sun_path ≤ 104 байта** (macOS; на Windows AF_UNIX 108). Гард уже стоит; в тестах пути короткие.
-4. **Не убий `dotnet` через `pkill -9` без `dotnet build-server shutdown`** — останутся висячие
-   MSBuild-ноды и локи, последующие сборки зависают «молча». Лечение: `dotnet build-server shutdown`,
-   `rm -rf windows/**/obj windows/**/bin`, запуск заново.
-5. **NStack.Core** ставит свои `Rune`/`ustring` в namespace `System` → на net10 коллизия с
-   `System.Text.Rune`. В двух файлах Vt/ стоит `using Rune = System.Rune;` — сохраняй при регенерации вендора.
-6. **Swift-frontend fatalError без диагностики** на холодной компиляции SessionHostRuntimeTests на этой
-   macOS — транзиент окружения; лечится `rm -rf agtermCore/.build` + повтор.
-7. **Скрытые на Windows Swift-команды** — `terminfo`, `zmx present`, `session overlay run-job`,
-   StreamBridge, OverlayRunJob за `#if !os(Windows)` — это POSIX-сторонние вещи по дизайну, не баги.
-8. Bootstrap-инвариант: у стора ВСЕГДА ≥1 workspace (`StoreModel.EnsureBootstrap`). Пустое дерево невалидно.
-9. Деферред-команды отвечают `"control dispatcher did not handle <cmd>"` — так и задумано (MVP).
-10. Владение сокетом: lock-файл `<socket>.lock` НЕ удалять никогда; отказавший инстанс рекламирует
-    `<socket>.unavailable` в AGTERM_SOCKET.
-
-## Конвенции (соблюдать)
-
-- Swift-правки: только узкие `#if os(Windows)`-ветки, macOS-код байт-в-байт тот же; `swift test` в
-  `agtermCore` обязателен после любых Swift-правок (на Windows есть Swift-тулчейн — macOS-набор тестов там
-  не запустится целиком из-за session-host таргетов, они в os(macOS)-блоке — это нормально; финальную
-  проверку macOS-веток делаем позже на маке).
-- C#-код в `Agterm.Core`/`Agterm.Control`: строго nullable + TreatWarningsAsErrors; строковые константы
-  протокола не менять без сверки со Swift (`ControlProtocol.swift`/`ControlDispatcher.swift`).
-- Коммиты: продолжай серию `windows: phase N — …`, в конце `Co-Authored-By: Claude Code <noreply@anthropic.com>`.
-- Пуш в `fork` (origin может не быть) — `git push fork windows-port`.
+5. **Потом**: persistence-проверка restore-Layout, статусы в UI, темы, E2E-сьют, CI windows-latest,
+   `dotnet publish` self-contained.
 
 ## Быстрые команды (Windows, PowerShell)
 

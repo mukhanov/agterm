@@ -11,6 +11,8 @@ internal static class ConPty
     internal const int ProcThreadAttributePseudoConsole = 0x00020016;
     internal const uint ExtendedStartupInfoPresent = 0x00080000;
     internal const uint CreateUnicodeEnvironment = 0x00000400;
+    internal const int StartupUseStdHandles = 0x00000100;
+    internal static readonly IntPtr InvalidHandleValue = new IntPtr(-1);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Coord

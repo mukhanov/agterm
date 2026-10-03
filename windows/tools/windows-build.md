@@ -6,9 +6,15 @@ stay green on both sides.
 
 ## One-time setup
 
-1. **.NET SDK 10** — <https://dotnet.microsoft.com/download> (x64). Verify: `dotnet --version` → `10.x`.
-2. **Swift 6 toolchain for Windows** — <https://www.swift.org/install/windows/> (run the installer,
-   then restart the terminal). Verify: `swift --version`.
+1. **.NET SDK 10** — the user-local zip avoids elevation: download
+   `https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.401/dotnet-sdk-10.0.401-win-x64.zip`, extract to
+   `C:\Users\<you>\dotnet`, and export `DOTNET_ROOT` per shell (apphosts resolve the runtime through it,
+   not PATH). Verify: `%DOTNET_ROOT%\dotnet.exe --version` → `10.0.x`.
+2. **Swift 6 toolchain for Windows** —
+   `https://download.swift.org/swift-6.4.0-release/windows10/swift-6.4.0-RELEASE/swift-6.4.0-RELEASE-windows10.exe`
+   (InstallShield wrapper, ~2 GB). `/S` exits silently without elevation — run it interactively and
+   approve the UAC prompt; it installs to `C:\Library\Swift-development`. Linking needs MSVC + Windows
+   SDK, which the machine already has (VS Build Tools 18/2022, SDK 10.0.26100). Verify: `swift --version`.
 3. **Git** — any recent build; `git clone` your fork, `git checkout windows-port`.
 
 ## Build

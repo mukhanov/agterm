@@ -23,12 +23,12 @@ public sealed class TerminalEmulator : ITerminalDelegate, IPaneSurface, IDisposa
 
     public TerminalEmulator(TerminalSpawn spawn)
     {
+        PaneToken = spawn.PaneToken ?? Guid.NewGuid().ToString("N")[..12];
         _fontSize = spawn.FontSize ?? 12;
         _terminal = new XTerminal(this, new TerminalOptions { Cols = spawn.Cols ?? 80, Rows = spawn.Rows ?? 24 });
         _selection = new SelectionService(_terminal);
         _pty = PtySession.Start(spawn.CommandLine, spawn.WorkingDirectory, spawn.Environment,
-            spawn.Cols ?? 80, spawn.Rows ?? 24);
-        _pty.Output += chunk => _terminal.Feed(chunk);
+            spawn.Cols ?? 80, spawn.Rows ?? 24, onOutput: chunk => _terminal.Feed(chunk));
         _pty.Exited += code => Exited?.Invoke(code);
     }
 
@@ -67,7 +67,7 @@ public sealed class TerminalEmulator : ITerminalDelegate, IPaneSurface, IDisposa
 
     public bool IsRealized { get; private set; } = true;
 
-    public string PaneToken { get; } = Guid.NewGuid().ToString("N")[..12];
+    public string PaneToken { get; }
 
     public void TypeText(string text) => _pty.Write(Encoding.UTF8.GetBytes(text));
 
@@ -166,4 +166,5 @@ public sealed record TerminalSpawn(
     IReadOnlyDictionary<string, string> Environment,
     int? Cols = null,
     int? Rows = null,
-    double? FontSize = null);
+    double? FontSize = null,
+    string? PaneToken = null);

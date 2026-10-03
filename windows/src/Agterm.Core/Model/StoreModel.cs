@@ -188,6 +188,49 @@ public sealed class StoreModel
         return true;
     }
 
+    /// <summary>A pane's process exited: the split pane closes, a dead primary promotes its survivor into
+    /// the primary slot, a paneless session closes — the model half of handlePaneExit.</summary>
+    public bool HandlePaneExit(Guid sessionId, IPaneSurface surface)
+    {
+        var session = SessionWithId(sessionId);
+        if (session is null) return false;
+        if (session.SplitSurface == surface)
+        {
+            session.SplitSurface?.Teardown();
+            session.SplitSurface = null;
+            session.HasSplit = false;
+            session.SplitShown = false;
+            session.SplitFocused = false;
+            ScheduleTreeChanged();
+            Save();
+            return true;
+        }
+        if (session.Surface == surface && session.HasSplit)
+        {
+            var dying = session.Surface;
+            (session.Surface, session.SplitSurface) = (session.SplitSurface, session.Surface);
+            (session.CurrentCwd, session.SplitCwd) = (session.SplitCwd, session.CurrentCwd);
+            (session.OscTitle, session.SplitTitle) = (session.SplitTitle, session.OscTitle);
+            if (session.SplitInitialCwd is { } splitInitial)
+            {
+                session.SplitInitialCwd = session.InitialCwd;
+                session.InitialCwd = splitInitial;
+            }
+            session.HasSplit = false;
+            session.SplitShown = false;
+            session.SplitFocused = false;
+            session.Surface?.PromoteToPrimaryPane();
+            dying?.Teardown();
+            ScheduleTreeChanged();
+            Save();
+            return true;
+        }
+        // an exit report from a surface neither slot holds anymore (a pane this teardown already retired)
+        // is stale, not a close request
+        if (session.Surface != surface) return false;
+        return CloseSession(sessionId);
+    }
+
     /// <summary>Exactly one placement intent; returns false when a referenced id is missing.</summary>
     public bool MoveSession(Guid sessionId, ControlSessionMove move)
     {

@@ -20,7 +20,7 @@ namespace XtermSharp.CommandExtensions {
 				for (int row = rect.top; row <= rect.bottom; row++) {
 					var line = buffer.Lines [row + buffer.YBase];
 					for (int col = rect.left; col <= rect.right; col++) {
-						line [col] = new CharData (terminal.CurAttr, ' ', 1, 32);
+						line [col] = new CharData (terminal.CurAttr, new System.Text.Rune (' '), 1, 32);
 					}
 				}
 			}
@@ -39,7 +39,7 @@ namespace XtermSharp.CommandExtensions {
 				for (int row = rect.top; row <= rect.bottom; row++) {
 					var line = buffer.Lines [row + buffer.YBase];
 					for (int col = rect.left; col <= rect.right; col++) {
-						line [col] = new CharData (terminal.CurAttr, ' ', 1, 32);
+						line [col] = new CharData (terminal.CurAttr, new System.Text.Rune (' '), 1, 32);
 					}
 				}
 			}
@@ -62,7 +62,7 @@ namespace XtermSharp.CommandExtensions {
 				for (int row = rect.top; row <= rect.bottom; row++) {
 					var line = buffer.Lines [row + buffer.YBase];
 					for (int col = rect.left; col <= rect.right; col++) {
-						line [col] = new CharData (terminal.CurAttr, fillChar, 1, (int)fillChar);
+						line [col] = new CharData (terminal.CurAttr, new System.Text.Rune (fillChar), 1, (int)fillChar);
 					}
 				}
 			}

@@ -18,6 +18,7 @@ public sealed class PtySession : IDisposable
     private readonly byte[] _buffer = new byte[64 * 1024];
     private volatile bool _disposed;
 
+
     /// <summary>Raw VT bytes from the child, on the pump thread.</summary>
     public event Action<byte[]>? Output;
 
@@ -26,13 +27,15 @@ public sealed class PtySession : IDisposable
 
     public int ProcessId { get; }
 
-    private PtySession(IntPtr pseudoConsole, IntPtr inputWrite, IntPtr outputRead, IntPtr process, int processId)
+    private PtySession(IntPtr pseudoConsole, IntPtr inputWrite, IntPtr outputRead, IntPtr process, int processId,
+        Action<byte[]>? onOutput)
     {
         _pseudoConsole = pseudoConsole;
         _inputWrite = inputWrite;
         _outputRead = outputRead;
         _process = process;
         ProcessId = processId;
+        if (onOutput is not null) Output += onOutput;
         _pump = new Thread(PumpLoop) { IsBackground = true, Name = $"agterm-pty-{processId}" };
         _pump.Start();
         var watcher = new Thread(() =>
@@ -47,7 +50,7 @@ public sealed class PtySession : IDisposable
 
     /// <summary>Spawns the profile's command line in a pseudoconsole seeded at cols×rows cells.</summary>
     public static PtySession Start(string commandLine, string? workingDirectory, IReadOnlyDictionary<string, string> environment,
-        int cols = 80, int rows = 24)
+        int cols = 80, int rows = 24, Action<byte[]>? onOutput = null)
     {
         var security = new Interop.SecurityAttributes { Length = Marshal.SizeOf<Interop.SecurityAttributes>() };
         if (!CreatePipe(out var inputRead, out var inputWrite, ref security, 0))
@@ -71,23 +74,26 @@ public sealed class PtySession : IDisposable
         {
             if (!InitializeProcThreadAttributeList(attributeList, 1, 0, ref bufferSize))
                 throw new IOException("InitializeProcThreadAttributeList failed");
-            var pseudoConsolePtr = Marshal.AllocHGlobal(IntPtr.Size);
-            try
-            {
-                Marshal.WriteIntPtr(pseudoConsolePtr, pseudoConsole);
-                if (!UpdateProcThreadAttribute(attributeList, 0,
-                        (IntPtr)ProcThreadAttributePseudoConsole, pseudoConsolePtr,
-                        (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
-                    throw new IOException("UpdateProcThreadAttribute failed");
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(pseudoConsolePtr);
-            }
+            // lpValue is the HPCON value itself, not a pointer to it — a pointer reads as an invalid
+            // pseudoconsole handle and the child dies in DLL init (0xC0000142)
+            if (!UpdateProcThreadAttribute(attributeList, 0,
+                    (IntPtr)ProcThreadAttributePseudoConsole, pseudoConsole,
+                    (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
+                throw new IOException("UpdateProcThreadAttribute failed");
 
             var startup = new StartupInfoEx
             {
-                StartupInfo = { Cb = Marshal.SizeOf<StartupInfoEx>() },
+                StartupInfo =
+                {
+                    Cb = Marshal.SizeOf<StartupInfoEx>(),
+                    // without USESTDHANDLES the child inherits the host's redirected stdio and screen
+                    // text never reaches the pseudoconsole — INVALID_HANDLE_VALUE makes its stdio fall
+                    // back to the attached console, which is the pty (the node-pty recipe)
+                    Flags = StartupUseStdHandles,
+                    StdInput = InvalidHandleValue,
+                    StdOutput = InvalidHandleValue,
+                    StdError = InvalidHandleValue,
+                },
                 AttributeList = attributeList,
             };
 
@@ -103,7 +109,11 @@ public sealed class PtySession : IDisposable
             Marshal.FreeHGlobal(environmentBlock);
             CloseHandle(information.Thread);
 
-            return new PtySession(pseudoConsole, inputWrite, outputRead, information.Process, information.ProcessId);
+            // ConPTY on current Windows emits nothing until its first resize even when the size is the
+            // seed one — kick it once so the child's banner flows without a caller-driven resize.
+            ResizePseudoConsole(pseudoConsole, size);
+
+            return new PtySession(pseudoConsole, inputWrite, outputRead, information.Process, information.ProcessId, onOutput);
         }
         catch
         {
@@ -151,7 +161,7 @@ public sealed class PtySession : IDisposable
             throw new IOException($"pty write failed: {Marshal.GetLastWin32Error()}");
     }
 
-    [DllImport("kernel32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll", SetLastError = true, EntryPoint = "WriteFile")]
     private static extern bool WindowsWriteFile(IntPtr handle, byte[] buffer, uint bytesToWrite,
         out uint bytesWritten, IntPtr overlapped);
 
@@ -182,11 +192,23 @@ public sealed class PtySession : IDisposable
     private static extern bool ReadFile(IntPtr handle, byte[] buffer, uint bytesToRead, out uint bytesRead,
         IntPtr overlapped);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CancelIoEx(IntPtr handle, IntPtr overlapped);
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        // closing the app-side pipes makes the pump's ReadFile return and the watcher see child exit
+        // a sync ReadFile never wakes when its handle closes from another thread, and ClosePseudoConsole
+        // blocks until the output drains: terminate the child so ConPTY closes its end of the output pipe
+        // and the pump can exit, then retire the handles in that order. A dead child fails this harmlessly.
+        TerminateProcess(_process, 1);
+        CancelIoEx(_outputRead, IntPtr.Zero); // the pump's sync ReadFile only wakes to this or EOF
+        if (!_pump.Join(TimeSpan.FromSeconds(2)))
+            CancelIoEx(_outputRead, IntPtr.Zero);
         CloseHandle(_inputWrite);
         CloseHandle(_outputRead);
         ClosePseudoConsole(_pseudoConsole);

@@ -20,7 +20,7 @@ namespace XtermSharp {
 		{
 			this.terminal = terminal;
 			comparer = new PointComparer ();
-			nullString = NStack.ustring.Make (CharData.Null.Rune);
+			nullString = NStack.ustring.Make (CharData.Null.Rune.ToString ());
 			spaceString = NStack.ustring.Make (" ");
 		}
 
@@ -174,7 +174,7 @@ namespace XtermSharp {
 			Func<CharData, bool> isLetterOrChar = (cd) => {
 				if (cd.IsNullChar ())
 					return false;
-				return Rune.IsLetterOrDigit (cd.Rune);
+				return System.Text.Rune.IsLetterOrDigit (cd.Rune);
 			};
 
 			var chr = buffer.GetChar (col, row);

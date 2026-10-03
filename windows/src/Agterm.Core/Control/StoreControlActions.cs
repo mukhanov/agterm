@@ -101,8 +101,10 @@ public sealed class StoreControlActions(
         var candidates = store.FlattenedSessions();
         var ids = candidates.Select(s => s.Id).ToList();
         var active = store.SelectedSessionId;
+        // a missing target is the active session, matching the macOS dispatcher
+        target = string.IsNullOrEmpty(target) ? "active" : target;
         // cross-window fallback: an id typed from another window's tree still resolves
-        if (ControlResolve.Resolve(target ?? "", ids, active).Result == TargetResolution.Outcome.NotFound)
+        if (ControlResolve.Resolve(target, ids, active).Result == TargetResolution.Outcome.NotFound)
         {
             foreach (var other in OpenStores().Where(s => s != store))
             {

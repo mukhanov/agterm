@@ -1288,12 +1288,12 @@ namespace XtermSharp {
 								var chMinusTwo = bufferRow [buffer.X - 2];
 
 								chMinusTwo.Code += ch;
-								chMinusTwo.Rune = (uint)code;
+								chMinusTwo.Rune = new System.Text.Rune (code);
 								bufferRow [buffer.X - 2] = chMinusTwo; // must be set explicitly now
 							}
 						} else {
 							chMinusOne.Code += ch;
-							chMinusOne.Rune = (uint)code;
+							chMinusOne.Rune = new System.Text.Rune (code);
 							bufferRow [buffer.X - 1] = chMinusOne; // must be set explicitly now
 						}
 					}
@@ -1349,7 +1349,7 @@ namespace XtermSharp {
 				}
 
 				// write current char to buffer and advance cursor
-				var charData = new CharData (curAttr, (uint)code, chWidth, ch);
+				var charData = new CharData (curAttr, new System.Text.Rune (code), chWidth, ch);
 				bufferRow [buffer.X++] = charData;
 
 				// fullwidth char - also set next cell to placeholder stub and advance cursor

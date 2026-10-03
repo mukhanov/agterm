@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
+// NStack also declares System.Rune; without this alias the struct's ToString pads every cell
+using Rune = System.Text.Rune;
 
 namespace XtermSharp {
 	// MIGUEL TODO:
@@ -17,15 +19,15 @@ namespace XtermSharp {
 		public const int DefaultAttr = Renderer.DefaultColor << 9 | (256 << 0);
 		public const int InvertedAttr = Renderer.InvertedDefaultColor << 9 | (256 << 0) | Renderer.InvertedDefaultColor;
 
-		public static CharData Null = new CharData (DefaultAttr, '\u0200', 1, 0);
-		public static CharData WhiteSpace = new CharData (DefaultAttr, ' ', 1, 32);
-		public static CharData LeftBrace = new CharData (DefaultAttr, '{', 1, 123);
-		public static CharData RightBrace = new CharData (DefaultAttr, '}', 1, 125);
-		public static CharData LeftBracket = new CharData (DefaultAttr, '[', 1, 91);
-		public static CharData RightBracket = new CharData (DefaultAttr, ']', 1, 93);
-		public static CharData LeftParenthesis = new CharData (DefaultAttr, '(', 1, 40);
-		public static CharData RightParenthesis = new CharData (DefaultAttr, ')', 1, 41);
-		public static CharData Period = new CharData (DefaultAttr, '.', 1, 46);
+		public static CharData Null = new CharData (DefaultAttr, new Rune ('\u0200'), 1, 0);
+		public static CharData WhiteSpace = new CharData (DefaultAttr, new Rune (' '), 1, 32);
+		public static CharData LeftBrace = new CharData (DefaultAttr, new Rune ('{'), 1, 123);
+		public static CharData RightBrace = new CharData (DefaultAttr, new Rune ('}'), 1, 125);
+		public static CharData LeftBracket = new CharData (DefaultAttr, new Rune ('['), 1, 91);
+		public static CharData RightBracket = new CharData (DefaultAttr, new Rune (']'), 1, 93);
+		public static CharData LeftParenthesis = new CharData (DefaultAttr, new Rune ('('), 1, 40);
+		public static CharData RightParenthesis = new CharData (DefaultAttr, new Rune (')'), 1, 41);
+		public static CharData Period = new CharData (DefaultAttr, new Rune ('.'), 1, 46);
 
 		public CharData (int attribute, Rune rune, int width, int code)
 		{
@@ -39,7 +41,7 @@ namespace XtermSharp {
 		public CharData (int attribute)
 		{
 			Attribute = attribute;
-			Rune = '\u0200';
+			Rune = new Rune ('\u0200');
 			Width = 1;
 			Code = 0;
 		}

@@ -603,8 +603,8 @@ public class ResolveTests
     [Fact]
     public void SocketPathDerivation()
     {
-        Assert.Equal("/tmp/x/agterm.sock", ControlResolve.SocketPath("/tmp/x", "/ignored"));
-        Assert.Equal("/state/agterm.sock", ControlResolve.SocketPath(null, "/state"));
+        Assert.Equal(Path.Combine("/tmp/x", "agterm.sock"), ControlResolve.SocketPath("/tmp/x", "/ignored"));
+        Assert.Equal(Path.Combine("/state", "agterm.sock"), ControlResolve.SocketPath(null, "/state"));
         Assert.Equal("/state/agterm.sock.lock", ControlResolve.OwnershipLockPath("/state/agterm.sock"));
     }
 

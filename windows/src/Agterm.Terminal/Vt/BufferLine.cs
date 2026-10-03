@@ -167,11 +167,11 @@ namespace XtermSharp {
 				endCol = Math.Max (Math.Min (endCol, GetTrimmedLength ()), startCol);
 			}
 
-			Rune [] runes = new Rune [endCol - startCol];
+			var text = new System.Text.StringBuilder (endCol - startCol);
 			for (int i = startCol; i < endCol; i++)
-				runes [i - startCol] = data [i].Rune;
+				text.Append (data [i].Rune.ToString ());
 
-			return ustring.Make (runes);
+			return ustring.Make (text.ToString ());
 		}
 	}
 }
