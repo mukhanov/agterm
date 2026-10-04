@@ -145,11 +145,22 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
     }
 
     /// <summary>Schedules a frame.</summary>
+    private int _frameLog;
+
     public void Draw()
     {
         if (!_devicesReady || !_targetReady) return;
         SyncFontSize();
-        Render(BufferProvider?.Invoke());
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var buffer = BufferProvider?.Invoke();
+        Render(buffer);
+        watch.Stop();
+        if (_frameLog < 6)
+        {
+            var b = buffer?.Buffer;
+            MainWindow.UiLog($"frame {_frameLog}: {watch.ElapsedMilliseconds} ms ydisp={b?.YDisp} ybase={b?.YBase} y={b?.Y} lines={b?.Lines.Length}");
+            _frameLog++;
+        }
     }
 
     private void EnsureDevices()
