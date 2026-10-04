@@ -87,6 +87,18 @@ public sealed partial class MainWindow : Window
             foreach (var session in library.StoreFor(window.Id)?.Workspaces.SelectMany(w => w.Sessions) ?? [])
                 _queue.TryEnqueue(() => MountPane(session));
 
+        // a fresh install opens with a live shell, like the macOS first launch
+        var bootstrap = ActiveStore;
+        if (bootstrap is not null && !bootstrap.Workspaces.Any(w => w.Sessions.Count > 0))
+        {
+            var workspace = bootstrap.Workspaces.LastOrDefault();
+            if (workspace is not null)
+            {
+                var session = bootstrap.AddSession(workspace, Environment.CurrentDirectory, select: true);
+                session.Surface = CreateSurface(bootstrap, session, split: false);
+            }
+        }
+
         RefreshAll();
     }
 
@@ -255,6 +267,7 @@ public sealed partial class MainWindow : Window
         var session = store.SessionWithId(selected.Value);
         if (session is not null && _paneAreas.TryGetValue(session.Id, out var area))
         {
+            Detach(area);
             DeckHost.Child = area;
             foreach (var host in area.Children.OfType<PaneHost>()) host.ActivateRenderer();
         }
@@ -457,6 +470,17 @@ public sealed partial class MainWindow : Window
     {
         var grid = new Grid { Background = new SolidColorBrush(Color.FromArgb(255, 18, 18, 18)) };
         var sessions = store.Workspaces.SelectMany(w => w.Sessions).ToList();
+        if (sessions.Count == 0)
+        {
+            grid.Children.Add(new TextBlock
+            {
+                Text = "нет сессий — нажмите session+",
+                Opacity = 0.6,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            return grid;
+        }
         var columns = 2;
         for (var i = 0; i <= sessions.Count / columns; i++)
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -465,12 +489,18 @@ public sealed partial class MainWindow : Window
         for (var index = 0; index < sessions.Count; index++)
         {
             var session = sessions[index];
+            FrameworkElement? content = null;
+            if (_paneAreas.TryGetValue(session.Id, out var area))
+            {
+                Detach(area);
+                content = area;
+            }
             var cell = new Border
             {
                 Margin = new Thickness(4),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128)),
                 BorderThickness = new Thickness(1),
-                Child = _paneAreas.TryGetValue(session.Id, out var area) ? area : null,
+                Child = content,
             };
             Grid.SetRow(cell, index / columns);
             Grid.SetColumn(cell, index % columns);
@@ -492,6 +522,17 @@ public sealed partial class MainWindow : Window
     {
         _dashboardMode = !_dashboardMode;
         RefreshDeck();
+    }
+
+    /// <summary>An element can live under one parent; every re-parenting goes through this.</summary>
+    private static void Detach(FrameworkElement element)
+    {
+        switch (element.Parent)
+        {
+            case Panel panel: panel.Children.Remove(element); break;
+            case Border border: border.Child = null; break;
+            case ContentPresenter presenter: presenter.Content = null; break;
+        }
     }
 
     /// <summary>Returns keyboard focus to the active pane so typing lands in the terminal.</summary>
