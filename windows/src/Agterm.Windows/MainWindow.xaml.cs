@@ -85,7 +85,6 @@ public sealed partial class MainWindow : Window
 
         Title = "agterm";
         AddWindowAccelerators();
-        WireGlobalInput();
         Activated += (_, _) => FocusActivePane();
         Closed += (_, _) => Shutdown();
         foreach (var window in library.Windows)
@@ -436,83 +435,6 @@ public sealed partial class MainWindow : Window
         RefreshAll();
     }
 
-    /// <summary>All keyboard input routes at the window level into the active session's pane — pane
-    /// focus never gates typing. Only rename/text boxes opt out.</summary>
-    private void WireGlobalInput()
-    {
-        ((FrameworkElement)Content).AddHandler(UIElement.CharacterReceivedEvent,
-            new global::Windows.Foundation.TypedEventHandler<UIElement, CharacterReceivedRoutedEventArgs>(RootCharacterReceived),
-            handledEventsToo: true);
-        ((FrameworkElement)Content).AddHandler(UIElement.KeyDownEvent,
-            new KeyEventHandler(RootKeyDown), handledEventsToo: true);
-    }
-
-    private IPaneSurface? ActiveSurface()
-    {
-        var store = ActiveStore;
-        var id = store?.SelectedSessionId;
-        if (store is null || id is null) return null;
-        var session = store.SessionWithId(id.Value);
-        if (session is null) return null;
-        return session.SplitFocused ? session.SplitSurface ?? session.Surface : session.Surface;
-    }
-
-    private static bool FocusIsInTextBox()
-    {
-        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement();
-        return focused is Microsoft.UI.Xaml.Controls.TextBox;
-    }
-
-    private void RootKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (FocusIsInTextBox()) return;
-        var surface = ActiveSurface();
-        if (surface is null) return;
-        var ctrl = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down);
-        var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(CoreVirtualKeyStates.Down);
-        if (ctrl && shift) return; // window accelerators own Ctrl+Shift
-        switch (e.Key)
-        {
-            case VirtualKey.Enter: surface.PressReturn(); break;
-            case VirtualKey.Back: surface.TypeText(""); break;
-            case VirtualKey.Tab: surface.TypeText("	"); break;
-            case VirtualKey.Escape: surface.TypeText(""); break;
-            case VirtualKey.Up: surface.TypeText("[A"); break;
-            case VirtualKey.Down: surface.TypeText("[B"); break;
-            case VirtualKey.Right: surface.TypeText("[C"); break;
-            case VirtualKey.Left: surface.TypeText("[D"); break;
-            case VirtualKey.C when ctrl: surface.TypeText(""); break;
-            case VirtualKey.D when ctrl: surface.TypeText(""); break;
-            case VirtualKey.L when ctrl: surface.TypeText(""); break;
-            case VirtualKey.V when ctrl: PasteActiveAsync(); break;
-            default: return; // printable input arrives through CharacterReceived
-        }
-        e.Handled = true;
-    }
-
-    private void RootCharacterReceived(object sender, CharacterReceivedRoutedEventArgs e)
-    {
-        if (FocusIsInTextBox()) return;
-        var ch = e.Character;
-        if (ch < ' ') return;
-        ActiveSurface()?.TypeText(ch.ToString());
-    }
-
-    private async void PasteActiveAsync()
-    {
-        try
-        {
-            var content = Clipboard.GetContent();
-            if (!content.Contains(StandardDataFormats.Text)) return;
-            var text = await content.GetTextAsync();
-            ActiveSurface()?.TypeText(text.Replace("\r\n", "\r").Replace("\n", "\r"));
-        }
-        catch (Exception)
-        {
-            // a locked or empty clipboard just means no paste
-        }
-    }
-
     private void AddWindowAccelerators()
     {
         AddAccelerator(VirtualKey.T, () => OnNewSession(this, new RoutedEventArgs()));
@@ -624,15 +546,21 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Returns keyboard focus to the active pane so typing lands in the terminal. Rename
     /// boxes keep their focus.</summary>
-    private void FocusActivePane()
+    internal void FocusActivePane()
     {
-        if (FocusIsInTextBox()) return;
+        if (FocusIsInTextBox()) return; // a rename box keeps its focus
         var store = ActiveStore;
         var id = store?.SelectedSessionId;
         if (id is null) return;
         if (_paneAreas.TryGetValue(id.Value, out var area))
             foreach (var host in area.Children.OfType<PaneHost>())
                 host.Focus(FocusState.Programmatic);
+    }
+
+    private static bool FocusIsInTextBox()
+    {
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement();
+        return focused is Microsoft.UI.Xaml.Controls.TextBox;
     }
 
     private void Shutdown()

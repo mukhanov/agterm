@@ -34,9 +34,11 @@ public partial class App : Application
         }
         finally
         {
-            // keyboard events dispatch only to the focused element; a fresh launch has none until
-            // something takes focus, so the root grid takes it right after activation
-            (Window?.Content as Microsoft.UI.Xaml.FrameworkElement)?.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            // keyboard lands in the pane once it exists; the dispatcher pass after activation
+            // guarantees the pane is mounted before it takes focus
+            _ = (Window as MainWindow) ?? null;
+            Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(
+                () => (Window as MainWindow)?.FocusActivePane());
         }
     }
 }

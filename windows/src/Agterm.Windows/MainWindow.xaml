@@ -23,6 +23,16 @@
         <StackPanel x:Name="SidebarList" Spacing="1" />
       </ScrollViewer>
     </Grid>
-    <Border Grid.Column="1" x:Name="DeckHost" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" />
+    <Grid Grid.Column="1">
+      <!-- the invisible input sink: always focused, converts typing into pty bytes -->
+      <TextBox
+          x:Name="InputSink"
+          Opacity="0"
+          IsHitTestVisible="False"
+          AcceptsReturn="False"
+          IsSpellCheckEnabled="False"
+          TextWrapping="NoWrap" />
+      <Border x:Name="DeckHost" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" />
+    </Grid>
   </Grid>
 </Window>
