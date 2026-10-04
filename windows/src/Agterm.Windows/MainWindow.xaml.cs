@@ -473,6 +473,19 @@ public sealed partial class MainWindow : Window
     /// cell selects that session and returns to the single-session deck.</summary>
     private Grid BuildDashboard(StoreModel store)
     {
+        try
+        {
+            return BuildDashboardCore(store);
+        }
+        catch (Exception ex)
+        {
+            UiLog("BuildDashboard: " + ex);
+            throw;
+        }
+    }
+
+    private Grid BuildDashboardCore(StoreModel store)
+    {
         var grid = new Grid { Background = new SolidColorBrush(Color.FromArgb(255, 18, 18, 18)) };
         var sessions = store.Workspaces.SelectMany(w => w.Sessions).ToList();
         if (sessions.Count == 0)
@@ -529,8 +542,15 @@ public sealed partial class MainWindow : Window
 
     private void OnDashboard(object sender, RoutedEventArgs e)
     {
-        _dashboardMode = !_dashboardMode;
-        RefreshDeck();
+        try
+        {
+            _dashboardMode = !_dashboardMode;
+            RefreshDeck();
+        }
+        catch (Exception ex)
+        {
+            UiLog("dashboard: " + ex);
+        }
     }
 
     /// <summary>An element can live under one parent; every re-parenting goes through this.</summary>

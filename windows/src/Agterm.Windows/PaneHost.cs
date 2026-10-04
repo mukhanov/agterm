@@ -69,6 +69,8 @@ public sealed class PaneHost : Grid
             case VirtualKey.C when ctrl: surface.TypeText("\u0003"); break;
             case VirtualKey.D when ctrl: surface.TypeText("\u0004"); break;
             case VirtualKey.L when ctrl: surface.TypeText("\u000C"); break;
+            case VirtualKey.PageUp when ctrl: ScrollViewport(-20); e.Handled = true; break;
+            case VirtualKey.PageDown when ctrl: ScrollViewport(20); e.Handled = true; break;
             case VirtualKey.V when ctrl: PasteAsync(); break;
             default: return; // printable input arrives through CharacterReceived
         }
@@ -94,5 +96,14 @@ public sealed class PaneHost : Grid
         {
             // a locked or empty clipboard just means no paste
         }
+    }
+
+    /// <summary>Ctrl+PgUp/PgDn scrolls the scrollback viewport without feeding the pty.</summary>
+    private void ScrollViewport(int lines)
+    {
+        var active = (Surface as TerminalEmulator)?.EngineBuffer?.Buffer;
+        if (active is null) return;
+        active.YDisp = Math.Clamp(active.YDisp + lines, 0, Math.Max(0, active.YBase));
+        _renderer.Draw();
     }
 }

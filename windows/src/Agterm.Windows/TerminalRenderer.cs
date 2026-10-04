@@ -1,6 +1,7 @@
 using Agterm.Core.Model;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -31,6 +32,14 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
     private IDWriteFactory? _dwrite;
     private IDWriteTextFormat? _format;
     private readonly Dictionary<int, ID2D1SolidColorBrush> _brushes = [];
+    private readonly ScrollBar _scrollbar = new()
+    {
+        Orientation = Microsoft.UI.Xaml.Controls.Orientation.Vertical,
+        HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Right,
+        VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Stretch,
+        Width = 14,
+        Visibility = Visibility.Collapsed,
+    };
 
     private float _fontSize = 13f;
     private float _cellWidth = 8f;
@@ -61,6 +70,13 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
             if (_devicesReady) RecreateTarget((float)ActualWidth, (float)ActualHeight);
         };
         PointerWheelChanged += OnWheel;
+        Children.Add(_scrollbar);
+        _scrollbar.Scroll += (_, e) =>
+        {
+            var active = BufferProvider?.Invoke()?.Buffer;
+            if (active is null) return;
+            active.YDisp = Math.Clamp((int)Math.Round(_scrollbar.Value), 0, Math.Max(0, active.YBase));
+        };
     }
 
     /// <summary>Starts the device chain and the draw timer. The timer runs between XAML composition
@@ -342,6 +358,14 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
 
         context.EndDraw();
         _swapChain!.Present(1, PresentFlags.None);
+
+        var scrollMax = Math.Max(0, active?.YBase ?? 0);
+        _scrollbar.Maximum = scrollMax;
+        _scrollbar.ViewportSize = _rows;
+        _scrollbar.Value = Math.Clamp(active?.YDisp ?? 0, 0, scrollMax);
+        var wantBar = scrollMax > 0;
+        if (_scrollbar.Visibility != (wantBar ? Visibility.Visible : Visibility.Collapsed))
+            _scrollbar.Visibility = wantBar ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static string RunText(BufferLine line, int start, int end)
@@ -375,7 +399,7 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         var delta = e.GetCurrentPoint(this).Properties.MouseWheelDelta;
         var lines = -(delta / 120) * 3;
         var target = Math.Clamp(active.YDisp + lines, 0, Math.Max(0, active.YBase));
-        if (target != active.YDisp) { active.YDisp = target; Draw(); }
+        if (target != active.YDisp) { active.YDisp = target; _scrollbar.Value = target; Draw(); }
         e.Handled = true;
     }
 }
