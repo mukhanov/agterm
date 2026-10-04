@@ -13,9 +13,11 @@
         <RowDefinition Height="Auto" />
         <RowDefinition Height="*" />
       </Grid.RowDefinitions>
-      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="8,10,8,6">
-        <Button x:Name="NewSessionButton" Content="+ session" Click="OnNewSession" Padding="8,3" />
-        <Button x:Name="NewWorkspaceButton" Content="+ workspace" Click="OnNewWorkspace" Padding="8,3" />
+      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="6,10,6,6">
+        <Button x:Name="NewSessionButton" Content="session+" Click="OnNewSession" Padding="6,3" />
+        <Button x:Name="NewWorkspaceButton" Content="ws+" Click="OnNewWorkspace" Padding="6,3" />
+        <Button x:Name="SplitButton" Content="⬓" Click="OnSplit" Padding="6,3" />
+        <Button x:Name="DashboardButton" Content="▦" Click="OnDashboard" Padding="6,3" />
       </StackPanel>
       <ScrollViewer Grid.Row="1" Padding="4,0,4,8">
         <StackPanel x:Name="SidebarList" Spacing="1" />

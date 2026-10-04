@@ -25,6 +25,7 @@ public sealed class PaneHost : Grid
         IsTabStop = true;
         UseSystemFocusVisuals = false;
         KeyDown += OnKeyDown;
+        PointerPressed += (_, e) => Focus(FocusState.Pointer);
         CharacterReceived += OnPaneCharacterReceived;
         Loaded += (_, _) => Focus(FocusState.Programmatic);
 

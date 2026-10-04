@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window
     private readonly ControlServer _server;
     private readonly ShellProfile? _profile;
     private readonly Dictionary<Guid, Grid> _paneAreas = [];
+    private bool _dashboardMode;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _queue;
 
     public MainWindow()
@@ -187,6 +188,7 @@ public sealed partial class MainWindow : Window
                 {
                     store.SelectSession(id);
                     RefreshAll();
+                    FocusActivePane();
                 };
                 row.DoubleTapped += (_, _) => BeginRename(
                     row, session.CustomName ?? session.DisplayName,
@@ -243,6 +245,11 @@ public sealed partial class MainWindow : Window
         if (selected is null || store is null)
         {
             DeckHost.Child = null;
+            return;
+        }
+        if (_dashboardMode)
+        {
+            DeckHost.Child = BuildDashboard(store);
             return;
         }
         var session = store.SessionWithId(selected.Value);
@@ -345,6 +352,7 @@ public sealed partial class MainWindow : Window
         var session = store.AddSession(workspace, Environment.CurrentDirectory, select: true);
         session.Surface = CreateSurface(store, session, split: false);
         RefreshAll();
+        FocusActivePane();
     }
 
     private void OnNewWorkspace(object sender, RoutedEventArgs e)
@@ -441,6 +449,60 @@ public sealed partial class MainWindow : Window
         if (store is null || flat is null || nth > flat.Count) return;
         store.SelectSession(flat[nth - 1].Id);
         RefreshAll();
+    }
+
+    /// <summary>The dashboard: every session of the active workspace in a two-column grid; clicking a
+    /// cell selects that session and returns to the single-session deck.</summary>
+    private Grid BuildDashboard(StoreModel store)
+    {
+        var grid = new Grid { Background = new SolidColorBrush(Color.FromArgb(255, 18, 18, 18)) };
+        var sessions = store.Workspaces.SelectMany(w => w.Sessions).ToList();
+        var columns = 2;
+        for (var i = 0; i <= sessions.Count / columns; i++)
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        for (var i = 0; i < columns; i++)
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (var index = 0; index < sessions.Count; index++)
+        {
+            var session = sessions[index];
+            var cell = new Border
+            {
+                Margin = new Thickness(4),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128)),
+                BorderThickness = new Thickness(1),
+                Child = _paneAreas.TryGetValue(session.Id, out var area) ? area : null,
+            };
+            Grid.SetRow(cell, index / columns);
+            Grid.SetColumn(cell, index % columns);
+            var id = session.Id;
+            cell.PointerPressed += (_, _) =>
+            {
+                _dashboardMode = false;
+                store.SelectSession(id);
+                RefreshAll();
+            };
+            grid.Children.Add(cell);
+        }
+        return grid;
+    }
+
+    private void OnSplit(object sender, RoutedEventArgs e) => SplitActiveSession();
+
+    private void OnDashboard(object sender, RoutedEventArgs e)
+    {
+        _dashboardMode = !_dashboardMode;
+        RefreshDeck();
+    }
+
+    /// <summary>Returns keyboard focus to the active pane so typing lands in the terminal.</summary>
+    private void FocusActivePane()
+    {
+        var store = ActiveStore;
+        var id = store?.SelectedSessionId;
+        if (id is null) return;
+        if (_paneAreas.TryGetValue(id.Value, out var area))
+            foreach (var host in area.Children.OfType<PaneHost>())
+                host.Focus(FocusState.Programmatic);
     }
 
     private void Shutdown()
