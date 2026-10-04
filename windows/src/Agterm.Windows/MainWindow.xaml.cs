@@ -564,8 +564,8 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Returns keyboard focus to the active pane so typing lands in the terminal. Rename
-    /// boxes keep their focus.</summary>
+    /// <summary>Returns keyboard focus to the invisible input sink so typing lands in the active
+    /// pane. A rename box keeps its focus.</summary>
     internal void FocusActivePane()
     {
         if (FocusIsInTextBox()) return; // a rename box keeps its focus
@@ -574,13 +574,7 @@ public sealed partial class MainWindow : Window
         if (id is null) return;
         if (_paneAreas.TryGetValue(id.Value, out var area))
             foreach (var host in area.Children.OfType<PaneHost>())
-            {
-                // a freshly mounted pane has no size yet: focus succeeds only after layout, so
-                // schedule it once more on the next dispatcher pass
-                if (!host.Focus(FocusState.Programmatic))
-                    Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()
-                        .TryEnqueue(() => host.Focus(FocusState.Programmatic));
-            }
+                host.Focus(FocusState.Programmatic);
     }
 
     private static bool FocusIsInTextBox()
