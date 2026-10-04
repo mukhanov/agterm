@@ -1,0 +1,1 @@
+Error: connect(C:\Users\nikol\AppData\Local/agterm/agterm.sock) failed: winsock error 10061 — agterm may be stopped or unable to accept connections

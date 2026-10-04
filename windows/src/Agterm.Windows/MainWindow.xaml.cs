@@ -554,7 +554,13 @@ public sealed partial class MainWindow : Window
         if (id is null) return;
         if (_paneAreas.TryGetValue(id.Value, out var area))
             foreach (var host in area.Children.OfType<PaneHost>())
-                host.Focus(FocusState.Programmatic);
+            {
+                // a freshly mounted pane has no size yet: focus succeeds only after layout, so
+                // schedule it once more on the next dispatcher pass
+                if (!host.Focus(FocusState.Programmatic))
+                    Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()
+                        .TryEnqueue(() => host.Focus(FocusState.Programmatic));
+            }
     }
 
     private static bool FocusIsInTextBox()

@@ -17,9 +17,9 @@ namespace Agterm.Windows;
 // The phase-5 terminal renderer: D3D11 swapchain composited into a SwapChainPanel, Direct2D drawing,
 // DirectWrite glyphs. Cells come straight from the XtermSharp buffer; attributes decode as
 // (flags << 18) | (fg << 9) | bg with 256 = default. The swapchain is sized in PHYSICAL pixels via
-// XamlRoot.RasterizationScale so text stays sharp at display scaling; the context DPI carries the
-// scale so all layout math stays in DIPs. Cell metrics are measured from the font, never estimated —
-// the caret and every glyph column hang off them. A true glyph atlas is a later optimization.
+// XamlRoot.RasterizationScale, re-read on every target rebuild (the scale is only known after the
+// panel joins the visual tree, and changes when the display scale changes). A true glyph atlas is a
+// later optimization.
 public sealed class TerminalRenderer : SwapChainPanel, IDisposable
 {
     private ID3D11Device? _device;
@@ -35,7 +35,6 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
     private float _fontSize = 13f;
     private float _cellWidth = 8f;
     private float _cellHeight = 17f;
-    private float _scale = 1f;
     private int _columns, _rows;
     private bool _devicesReady;
     private bool _targetReady;
@@ -55,16 +54,16 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         Loaded += (_, _) => EnsureStarted();
         SizeChanged += (_, e) =>
         {
-            try
-            {
-                if (_devicesReady) RecreateTarget((float)e.NewSize.Width, (float)e.NewSize.Height);
-            }
-            catch (Exception ex) { MainWindow.UiLog("resize: " + ex.Message); }
+            if (_devicesReady) RecreateTarget((float)e.NewSize.Width, (float)e.NewSize.Height);
+        };
+        CompositionScaleChanged += (_, _) =>
+        {
+            if (_devicesReady) RecreateTarget((float)ActualWidth, (float)ActualHeight);
         };
         PointerWheelChanged += OnWheel;
     }
 
-    /// <summary>Starts the device chain and the draw timer. The timer fires between XAML composition
+    /// <summary>Starts the device chain and the draw timer. The timer runs between XAML composition
     /// passes — drawing from CompositionTarget.Rendering collides with the compose of the very
     /// swapchain being presented and dies with DXGI_ERROR_INVALID_CALL under output load.</summary>
     public void EnsureStarted()
@@ -74,6 +73,7 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
             SizeChanged += DeferredStart;
             return;
         }
+        SizeChanged -= DeferredStart;
         StartCore();
     }
 
@@ -128,19 +128,12 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         _device?.Dispose();
     }
 
-    private int _frameMeasurements;
-
     /// <summary>Schedules a frame.</summary>
     public void Draw()
     {
         if (!_devicesReady || !_targetReady) return;
         SyncFontSize();
-        var watch = System.Diagnostics.Stopwatch.StartNew();
         Render(BufferProvider?.Invoke());
-        watch.Stop();
-        if (_frameMeasurements < 5 || watch.ElapsedMilliseconds > 300)
-            MainWindow.UiLog($"frame {_frameMeasurements}: {watch.ElapsedMilliseconds} ms");
-        if (watch.ElapsedMilliseconds > 300 || _frameMeasurements < 5) _frameMeasurements++;
     }
 
     private void EnsureDevices()
@@ -161,18 +154,17 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
 
         // a directly created factory serves composition swapchains identically to the device's own
         using var dxgiFactory = DXGI.CreateDXGIFactory1<IDXGIFactory2>();
-        _scale = (float)(XamlRoot?.RasterizationScale ?? 1.0);
-        if (_scale < 0.1f) _scale = 1f;
+        var scale = CurrentScale();
         var description = new SwapChainDescription1
         {
-            Width = (uint)Math.Max(1, (int)(ActualWidth * _scale)),
-            Height = (uint)Math.Max(1, (int)(ActualHeight * _scale)),
+            Width = (uint)Math.Max(1, (int)(ActualWidth * scale)),
+            Height = (uint)Math.Max(1, (int)(ActualHeight * scale)),
             Format = Format.B8G8R8A8_UNorm,
             Stereo = false,
             SampleDescription = new SampleDescription(1, 0),
             BufferUsage = Usage.RenderTargetOutput,
             BufferCount = 2,
-            Scaling = Scaling.Stretch, // composition swapchains only support stretch scaling
+            Scaling = Scaling.Stretch,
             SwapEffect = SwapEffect.FlipSequential,
             AlphaMode = AlphaMode.Ignore,
         };
@@ -184,6 +176,13 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         MeasureCell();
         _devicesReady = true;
         RecreateTarget((float)ActualWidth, (float)ActualHeight);
+    }
+
+    /// <summary>The display scale, valid only once the panel is in the visual tree.</summary>
+    private float CurrentScale()
+    {
+        var scale = (float)(XamlRoot?.RasterizationScale ?? 1.0);
+        return scale < 0.1f ? 1f : scale;
     }
 
     /// <summary>The exact monospace advance and line height from a measured layout — estimating the
@@ -200,22 +199,21 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
     private void RecreateTarget(float widthDips, float heightDips)
     {
         if (!_devicesReady || _swapChain is null || _context is null || widthDips < 1 || heightDips < 1) return;
+        var scale = CurrentScale();
         _target?.Dispose();
         _target = null;
         _context.Target = null; // DXGI refuses ResizeBuffers while the context holds a back buffer
-        var pixelWidth = Math.Max(1, (uint)(widthDips * _scale));
-        var pixelHeight = Math.Max(1, (uint)(heightDips * _scale));
-        try { _swapChain.ResizeBuffers(0, pixelWidth, pixelHeight, Format.B8G8R8A8_UNorm, SwapChainFlags.None); }
-        catch (Exception e) { MainWindow.UiLog("ResizeBuffers failed: " + e.Message); throw; }
+        var pixelWidth = Math.Max(1, (uint)(widthDips * scale));
+        var pixelHeight = Math.Max(1, (uint)(heightDips * scale));
+        _swapChain.ResizeBuffers(0, pixelWidth, pixelHeight, Format.B8G8R8A8_UNorm, SwapChainFlags.None);
         using var backBuffer = _swapChain.GetBuffer<ID3D11Texture2D>(0);
         using var surface = backBuffer.QueryInterface<IDXGISurface>();
         var properties = new BitmapProperties1(
             new Vortice.DCommon.PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
-            96f * _scale, 96f * _scale, BitmapOptions.Target | BitmapOptions.CannotDraw);
-        try { _target = _context.CreateBitmapFromDxgiSurface(surface, properties); }
-        catch (Exception e) { MainWindow.UiLog("CreateBitmapFromDxgiSurface failed: " + e.Message); throw; }
+            96f * scale, 96f * scale, BitmapOptions.Target | BitmapOptions.CannotDraw);
+        _target = _context.CreateBitmapFromDxgiSurface(surface, properties);
         _context.Target = _target;
-        _context.SetDpi(96f * _scale, 96f * _scale);
+        _context.SetDpi(96f * scale, 96f * scale);
         _targetReady = true;
 
         RecomputeGrid(widthDips, heightDips);
@@ -266,8 +264,7 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
     {
         var context = _context!;
         var (themeBack, themeFront) = ThemeBase();
-        try { context.BeginDraw(); }
-        catch (Exception e) { MainWindow.UiLog("BeginDraw failed: " + e.Message); throw; }
+        context.BeginDraw();
         context.Clear(themeBack);
 
         var active = buffer?.Buffer;
@@ -311,20 +308,9 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
                         if (!string.IsNullOrWhiteSpace(text))
                         {
                             var brush = Brush(front);
-                            IDWriteTextLayout layout;
-                            try
-                            {
-                                layout = _dwrite!.CreateTextLayout(
-                                    text, _format, runLength * _cellWidth + 8, _cellHeight + 6);
-                            }
-                            catch (Exception e)
-                            {
-                                MainWindow.UiLog($"CreateTextLayout failed for '{text[..Math.Min(20, text.Length)]}': " + e.Message);
-                                column = runEnd;
-                                continue;
-                            }
+                            using var layout = _dwrite!.CreateTextLayout(
+                                text, _format, runLength * _cellWidth + 8, _cellHeight + 6);
                             context.DrawTextLayout(new Vector2(column * _cellWidth, row * _cellHeight), layout, brush);
-                            layout.Dispose();
                             var underline = row * _cellHeight + _cellHeight - 2;
                             if (flags.HasFlag(FLAGS.UNDERLINE))
                                 context.DrawLine(new Vector2(column * _cellWidth, underline),
@@ -341,18 +327,21 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
                 }
             }
 
-            // the cursor as an outlined block over the live viewport
+            // the cursor as a translucent block with an outline over the live viewport
             var cursorRow = active.Y - active.YDisp;
             if (cursorRow >= 0 && cursorRow < _rows)
-                context.DrawRectangle(
-                    new Rect(active.X * _cellWidth, cursorRow * _cellHeight, _cellWidth, _cellHeight),
-                    Brush(themeFront), 2f);
+            {
+                var cursorBrush = Brush(themeFront);
+                var cursorRect = new Rect(active.X * _cellWidth, cursorRow * _cellHeight,
+                    _cellWidth, _cellHeight);
+                var fill = new Vortice.Mathematics.Color4(themeFront.R, themeFront.G, themeFront.B, 0.35f);
+                context.FillRectangle(cursorRect, Brush(fill));
+                context.DrawRectangle(cursorRect, cursorBrush, 2f);
+            }
         }
 
-        try { context.EndDraw(); }
-        catch (Exception e) { MainWindow.UiLog("EndDraw failed: " + e.Message); throw; }
-        try { _swapChain!.Present(1, PresentFlags.None); }
-        catch (Exception e) { MainWindow.UiLog("Present failed: " + e.Message); throw; }
+        context.EndDraw();
+        _swapChain!.Present(1, PresentFlags.None);
     }
 
     private static string RunText(BufferLine line, int start, int end)
