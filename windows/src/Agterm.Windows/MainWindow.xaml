@@ -27,8 +27,11 @@
       <!-- the invisible input sink: always focused, converts typing into pty bytes -->
       <TextBox
           x:Name="InputSink"
-          Opacity="0"
-          IsHitTestVisible="False"
+          Width="1" Height="1"
+          Margin="-2"
+          Opacity="0.01"
+          Background="Transparent"
+          BorderThickness="0"
           AcceptsReturn="False"
           IsSpellCheckEnabled="False"
           TextWrapping="NoWrap" />
