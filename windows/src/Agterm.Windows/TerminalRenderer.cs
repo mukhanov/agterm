@@ -128,12 +128,19 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         _device?.Dispose();
     }
 
+    private int _frameMeasurements;
+
     /// <summary>Schedules a frame.</summary>
     public void Draw()
     {
         if (!_devicesReady || !_targetReady) return;
         SyncFontSize();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         Render(BufferProvider?.Invoke());
+        watch.Stop();
+        if (_frameMeasurements < 5 || watch.ElapsedMilliseconds > 300)
+            MainWindow.UiLog($"frame {_frameMeasurements}: {watch.ElapsedMilliseconds} ms");
+        if (watch.ElapsedMilliseconds > 300 || _frameMeasurements < 5) _frameMeasurements++;
     }
 
     private void EnsureDevices()

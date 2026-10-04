@@ -32,5 +32,11 @@ public partial class App : Application
             Program.UiLog("OnLaunched: " + e);
             throw;
         }
+        finally
+        {
+            // keyboard events dispatch only to the focused element; a fresh launch has none until
+            // something takes focus, so the root grid takes it right after activation
+            (Window?.Content as Microsoft.UI.Xaml.FrameworkElement)?.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+        }
     }
 }
