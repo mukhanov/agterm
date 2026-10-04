@@ -64,7 +64,9 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         PointerWheelChanged += OnWheel;
     }
 
-    /// <summary>Starts the device chain and the per-frame draw loop (CompositionTarget.Rendering).</summary>
+    /// <summary>Starts the device chain and the draw timer. The timer fires between XAML composition
+    /// passes — drawing from CompositionTarget.Rendering collides with the compose of the very
+    /// swapchain being presented and dies with DXGI_ERROR_INVALID_CALL under output load.</summary>
     public void EnsureStarted()
     {
         if (ActualWidth < 1)
@@ -87,8 +89,10 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
         EnsureDevices();
         if (_renderLoop) return;
         _renderLoop = true;
+        var timer = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(33);
         var consecutiveFailures = 0;
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += (_, _) =>
+        timer.Tick += (_, _) =>
         {
             try
             {
@@ -102,11 +106,13 @@ public sealed class TerminalRenderer : SwapChainPanel, IDisposable
                     MainWindow.UiLog($"render (failure {consecutiveFailures}): " + e.Message);
                 if (consecutiveFailures >= 200)
                 {
+                    timer.Stop();
                     _renderLoop = false;
                     MainWindow.UiLog("render loop stopped after 200 consecutive failures");
                 }
             }
         };
+        timer.Start();
     }
 
     public new void Dispose()

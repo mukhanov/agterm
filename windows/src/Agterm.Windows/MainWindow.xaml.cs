@@ -482,9 +482,10 @@ public sealed partial class MainWindow : Window
             return grid;
         }
         var columns = 2;
-        for (var i = 0; i <= sessions.Count / columns; i++)
+        var rowCount = (sessions.Count + columns - 1) / columns;
+        for (var rowIdx = 0; rowIdx < rowCount; rowIdx++)
             grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        for (var i = 0; i < columns; i++)
+        for (var colIdx = 0; colIdx < columns; colIdx++)
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         for (var index = 0; index < sessions.Count; index++)
         {

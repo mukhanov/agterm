@@ -146,6 +146,13 @@ public sealed class ControlServer : IDisposable
         {
             response = ControlResponse.Fail(ControlWire.InvalidRequestMessage(exception));
         }
+        catch (Exception exception)
+        {
+            // diagnostics: an escaping dispatcher bug must be visible, never a silent dead accept thread
+            File.AppendAllText(Path.Combine(Path.GetTempPath(), "agterm-ui.log"),
+                DateTime.Now.ToString("HH:mm:ss.fff ") + "dispatch: " + exception + Environment.NewLine);
+            response = ControlResponse.Fail("internal error: " + exception.Message);
+        }
         WriteReply(connection, response);
     }
 
