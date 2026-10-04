@@ -48,3 +48,6 @@ __pycache__/
 # windows publish artifacts
 windows/dist/
 agterm-windows-*.zip
+
+# ad-hoc capture logs
+windows/src/Agterm.Windows/err*.txt
